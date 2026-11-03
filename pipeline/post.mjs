@@ -11,13 +11,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS, EXTMeshoptCompression } from '@gltf-transform/extensions';
 import { dedup, prune, quantize, reorder } from '@gltf-transform/functions';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 
-const require = createRequire(import.meta.url);
 const work = path.resolve(process.argv[2]);
 const id = process.argv[3];
 const dist = path.join(work, 'dist', 'fighters');
@@ -41,8 +40,8 @@ const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies(
 
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 const r6 = (x) => Math.round(x * 1e6) / 1e6;
-const cli = path.join(path.dirname(require.resolve('@gltf-transform/cli/package.json')), 'bin', 'cli.js');
-const run = (args) => execFileSync(process.execPath, [cli, ...args], { stdio: 'inherit' });
+const cli = fileURLToPath(new URL('./node_modules/.bin/gltf-transform', import.meta.url));
+const run = (args) => execFileSync(cli, args, { stdio: 'inherit' });
 
 // ---- 1. Materials, attributes ----
 const doc = await io.read(path.join(work, 'raw', `${id}.glb`));
