@@ -1,0 +1,59 @@
+name: Vendor the inputs
+
+# Downloads every build input once (pipeline/inputs.json: Blender, MPFB, Cell Fracture, KTX-Software and the
+# MakeHuman asset packs), verifies each, and publishes them as release inputs-v1 with SHA256SUMS. Every build
+# after this reads only from that release, so a dead upstream (the MakeHuman community services closed on
+# 2026-10-21) cannot break one.
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Release to publish to
+        default: inputs-v1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vendor
+  cancel-in-progress: false
+
+jobs:
+  vendor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Download and verify
+        run: node pipeline/vendor.mjs inputs
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REL: ${{ inputs.release }}
+        run: |
+          cd inputs
+          tar -czf listing.tar.gz listing
+          {
+            echo "Build inputs for the Mortal Eggy asset pipeline, mirrored from their publishers (see pipeline/inputs.json)."
+            echo
+            echo "Every build reads only from this release. Checksums: SHA256SUMS."
+            echo
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } > notes.md
+          files=$(jq -r '.inputs[].name' ../pipeline/inputs.json)
+          if gh release view "$REL" >/dev/null 2>&1; then
+            gh release upload "$REL" $files SHA256SUMS listing.tar.gz --clobber
+            gh release edit "$REL" --notes-file notes.md
+          else
+            gh release create "$REL" $files SHA256SUMS listing.tar.gz --title "$REL" --notes-file notes.md
+          fi
+          cat listing/credits.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: listing
+          path: inputs/listing/

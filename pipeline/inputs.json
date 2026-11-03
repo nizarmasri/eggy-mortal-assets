@@ -1,0 +1,56 @@
+{
+  "release": "inputs-v1",
+  "note": "Everything a build reads, mirrored into our own release so a dead upstream cannot break a build. sha256 is pinned where the publisher gives one; the MakeHuman packs are pinned by ETag while downloading and by our SHA256SUMS after.",
+  "inputs": [
+    {
+      "name": "blender-4.5.15-linux-x64.tar.xz",
+      "what": "Blender 4.5 LTS",
+      "license": "GPL-3.0 (tool, not shipped)",
+      "sha256": "0d2b8bb2efe97e6c8eb57de6b7322f8800e1984e3125b60decca5f6771e4773e",
+      "urls": [
+        "https://download.blender.org/release/Blender4.5/blender-4.5.15-linux-x64.tar.xz",
+        "https://mirrors.ocf.berkeley.edu/blender/release/Blender4.5/blender-4.5.15-linux-x64.tar.xz",
+        "https://ftp.nluug.nl/pub/graphics/blender/release/Blender4.5/blender-4.5.15-linux-x64.tar.xz",
+        "https://mirror.clarkson.edu/blender/release/Blender4.5/blender-4.5.15-linux-x64.tar.xz"
+      ]
+    },
+    {
+      "name": "add-on-mpfb-v2.0.18.zip",
+      "what": "MPFB 2.0.18 (MakeHuman Plugin For Blender)",
+      "license": "GPL-3.0 code, CC0 bundled data (tool, not shipped)",
+      "sha256": "c075b3e9b94b8e5556a5f03f4653602d02ea306de08126e8f55ed6dee28a2dad",
+      "urls": [
+        "https://extensions.blender.org/download/sha256:c075b3e9b94b8e5556a5f03f4653602d02ea306de08126e8f55ed6dee28a2dad/add-on-mpfb-v2.0.18.zip",
+        "https://extensions.blender.org/download/sha256:c075b3e9b94b8e5556a5f03f4653602d02ea306de08126e8f55ed6dee28a2dad/add-on-mpfb-v2.0.18.zip?repository=%2Fapi%2Fv1%2Fextensions%2F&blender_version_min=4.2.0"
+      ]
+    },
+    {
+      "name": "add-on-cell-fracture-v0.2.1.zip",
+      "what": "Cell Fracture 0.2.1",
+      "license": "GPL-2.0-or-later (tool, not shipped)",
+      "sha256": "878bbd46e0c735da689101aeed9ebe99f18c0d8d0cbd2e9e17ed8cda6b264fb2",
+      "urls": [
+        "https://extensions.blender.org/download/sha256:878bbd46e0c735da689101aeed9ebe99f18c0d8d0cbd2e9e17ed8cda6b264fb2/add-on-cell-fracture-v0.2.1.zip",
+        "https://extensions.blender.org/download/sha256:878bbd46e0c735da689101aeed9ebe99f18c0d8d0cbd2e9e17ed8cda6b264fb2/add-on-cell-fracture-v0.2.1.zip?repository=%2Fapi%2Fv1%2Fextensions%2F&blender_version_min=4.2.0"
+      ]
+    },
+    {
+      "name": "KTX-Software-4.4.2-Linux-x86_64.tar.bz2",
+      "what": "KTX-Software 4.4.2 (ktx, toktx)",
+      "license": "Apache-2.0 (tool, not shipped)",
+      "sha1url": "https://github.com/KhronosGroup/KTX-Software/releases/download/v4.4.2/KTX-Software-4.4.2-Linux-x86_64.tar.bz2.sha1",
+      "urls": [
+        "https://github.com/KhronosGroup/KTX-Software/releases/download/v4.4.2/KTX-Software-4.4.2-Linux-x86_64.tar.bz2"
+      ]
+    },
+    { "name": "makehuman_system_assets_cc0.zip", "what": "MakeHuman system assets", "license": "CC0", "pack": true, "urls": ["https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip", "https://files2.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip"] },
+    { "name": "skins01_cc0.zip", "what": "MakeHuman skins01", "license": "CC0", "pack": true, "urls": ["https://files.makehumancommunity.org/asset_packs/skins01/skins01_cc0.zip", "https://files2.makehumancommunity.org/asset_packs/skins01/skins01_cc0.zip"] },
+    { "name": "skins02_cc0.zip", "what": "MakeHuman skins02", "license": "CC0", "pack": true, "urls": ["https://files.makehumancommunity.org/asset_packs/skins02/skins02_cc0.zip", "https://files2.makehumancommunity.org/asset_packs/skins02/skins02_cc0.zip"] },
+    { "name": "shirts01_cc0.zip", "what": "MakeHuman shirts01", "license": "CC0", "pack": true, "urls": ["https://files.makehumancommunity.org/asset_packs/shirts01/shirts01_cc0.zip", "https://files2.makehumancommunity.org/asset_packs/shirts01/shirts01_cc0.zip"] },
+    { "name": "pants01_cc0.zip", "what": "MakeHuman pants01", "license": "CC0", "pack": true, "urls": ["https://files.makehumancommunity.org/asset_packs/pants01/pants01_cc0.zip", "https://files2.makehumancommunity.org/asset_packs/pants01/pants01_cc0.zip"] },
+    { "name": "gloves01_cc0.zip", "what": "MakeHuman gloves01", "license": "CC0", "pack": true, "urls": ["https://files.makehumancommunity.org/asset_packs/gloves01/gloves01_cc0.zip", "https://files2.makehumancommunity.org/asset_packs/gloves01/gloves01_cc0.zip"] },
+    { "name": "masks01_cc0.zip", "what": "MakeHuman masks01", "license": "CC0", "pack": true, "urls": ["https://files.makehumancommunity.org/asset_packs/masks01/masks01_cc0.zip", "https://files2.makehumancommunity.org/asset_packs/masks01/masks01_cc0.zip"] },
+    { "name": "pants03_ccby.zip", "what": "MakeHuman pants03", "license": "CC-BY", "pack": true, "urls": ["https://files.makehumancommunity.org/asset_packs/pants03/pants03_ccby.zip", "https://files2.makehumancommunity.org/asset_packs/pants03/pants03_ccby.zip"] },
+    { "name": "shoes02_ccby.zip", "what": "MakeHuman shoes02", "license": "CC-BY", "pack": true, "urls": ["https://files.makehumancommunity.org/asset_packs/shoes02/shoes02_ccby.zip", "https://files2.makehumancommunity.org/asset_packs/shoes02/shoes02_ccby.zip"] }
+  ]
+}
