@@ -33,6 +33,24 @@ def _stitch(v, period, width=0.12):
     return (np.mod(v / period, 1.0) < 0.55).astype(float)
 
 
+def _laces(A, R, on, x, y, z, lo, hi, colour, tongue, width=0.32, pitch=0.018):
+    """Boot laces up the front (legwear param): a tongue, and laces crossed in an X over it."""
+    panel = on & (z > 0.78) & (np.abs(x) < width) & (y > lo) & (y < hi)
+    A, R = _paint(A, R, panel, tongue, 0.6)
+    a = np.abs(np.mod(y / pitch + x / (2 * width), 1.0) - 0.5) < 0.13
+    b = np.abs(np.mod(y / pitch - x / (2 * width), 1.0) - 0.5) < 0.13
+    A, R = _paint(A, R, panel & (a | b) & (np.abs(x) < width * 0.9), colour, 0.55)
+    return A, R
+
+
+def _sun(x, y, cx, cy, r0, r1, rays=12):
+    """A disc and pointed rays round it (pattern coordinates in metres)."""
+    rr = np.hypot(x - cx, y - cy)
+    ang = np.arctan2(y - cy, x - cx)
+    ray = np.abs(np.mod(ang * rays / (2 * np.pi) + 0.5, 1.0) - 0.5) < 0.45 * np.clip(1 - (rr - r0 * 1.15) / (r1 - r0 * 1.15), 0, 1)
+    return (rr < r0) | ((rr > r0 * 1.15) & (rr < r1) & ray)
+
+
 def elyema(names, slot, prm, A, R, ctx):
     x, y, z = prm[..., 0], prm[..., 1], prm[..., 2]
     knee = ctx.get("knee_z", 0.5)
@@ -78,6 +96,7 @@ def duke(names, slot, prm, A, R, ctx):
         elif n == "g_boots":
             # Black boxing boots: a white cuff with a green line, a white sole.
             top = y[on].max() if on.any() else 0.5
+            A, R = _laces(A, R, on, x, y, z, 0.075, top - 0.04, (0.92, 0.9, 0.86), (0.1, 0.1, 0.1))
             A, R = _paint(A, R, on & (y > top - 0.03), (0.92, 0.9, 0.86), 0.45)
             A, R = _paint(A, R, on & (np.abs(y - (top - 0.015)) < 0.004), (0.0, 0.42, 0.2), 0.45)
             A, R = _paint(A, R, on & (y < 0.022), (0.85, 0.83, 0.8), 0.7)
@@ -138,6 +157,9 @@ def mara(names, slot, prm, A, R, ctx):
             edge = on & (np.abs(np.abs(y - (knee + 0.02)) - 0.075) < 0.004) & (z > 0.25)
             A, R = _paint(A, R, pad, (0.2, 0.21, 0.21), 0.85)
             A, R = _paint(A, R, edge, (0.12, 0.12, 0.12), 0.85)
+        elif n == "g_shoes":
+            # Sambo shoes: a grey rubber sole under the black leather.
+            A, R = _paint(A, R, on & (y < 0.017), (0.16, 0.155, 0.15), 0.75)
     return A, R
 
 

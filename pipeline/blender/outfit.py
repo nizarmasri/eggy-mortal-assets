@@ -705,6 +705,125 @@ def tight(body, arm, m, spec, name):
     return obj
 
 
+# ---------- boots and shoes ----------
+
+def _convex_hull(points, name):
+    """A closed convex hull of a point cloud, as an object."""
+    bm = bmesh.new()
+    for p in points:
+        bm.verts.new(Vector(p))
+    res = bmesh.ops.convex_hull(bm, input=list(bm.verts), use_existing_faces=False)
+    doomed = [g for g in res["geom_interior"] + res["geom_unused"] if isinstance(g, bmesh.types.BMVert)]
+    if doomed:
+        bmesh.ops.delete(bm, geom=doomed, context='VERTS')
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    return util.bmesh_object(name, bm)
+
+
+def boots(body, arm, m, spec, name="boots"):
+    """Boots or shoes as one smooth shape round each foot, not a layer on the skin (which shows every toe).
+
+    Each foot below the ankle is replaced by its convex hull (a rounded toe box with no toes in it, the arch
+    filled, a flat underside), joined to the leg from the ankle up to above the cuff and remeshed into one
+    closed volume, smoothed like stiff leather and set a few millimetres off the skin. The top is cut clean
+    across the shin at `cuff` (a fraction down the calf bone, 0 at the knee and 1 at the ankle) and given a
+    rim; the underside is pressed flat with a welt round the sole. Weights come from the body, so the boot
+    follows the foot and ball bones; the body's foot under it is removed for good (fighter.py), so no toe can
+    poke through when the foot flexes."""
+    cuff = spec.get("cuff", 0.4)
+    off = spec.get("offset", 0.004)
+    sole_h = spec.get("sole_h", 0.02)
+    welt = spec.get("welt", 0.0025)
+    P = util.positions(body)
+    parts = []
+    floor = 1e9
+    cuts = []
+    for s, sign in (("l", 1), ("r", -1)):
+        W = util.weights_matrix(body, [f"foot_{s}", f"ball_{s}", f"calf_{s}"])
+        knee, ankle = np.array(m[f"calf_{s}"]), np.array(m[f"foot_{s}"])
+        d = ankle - knee
+        t = ((P - knee) @ d) / (d @ d)
+        side = (P[:, 0] * sign) > 0
+        lower = side & (W.sum(axis=1) >= 0.5) & (t >= cuff - 0.12)
+        z_ank = float(ankle[2])
+        foot = lower & (P[:, 2] <= z_ank)
+        floor = min(floor, float(P[foot, 2].min()))
+        # The foot below the ankle as a hull: no toe separation, no arch, nothing for a toe to show through.
+        parts.append(_convex_hull(P[foot], f"{name}_hull_{s}"))
+        # The leg from just inside the hull up past the cuff, closed at both ends.
+        leg = util.extract_faces(body, util.faces_of_vertices(body, lower & (P[:, 2] >= z_ank - 0.012)), f"{name}_leg_{s}")
+        bm = bmesh.new()
+        bm.from_mesh(leg.data)
+        bmesh.ops.holes_fill(bm, edges=[e for e in bm.edges if e.is_boundary], sides=0)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        bm.to_mesh(leg.data)
+        bm.free()
+        leg.data.update()
+        for g in list(leg.vertex_groups):
+            leg.vertex_groups.remove(g)
+        parts.append(leg)
+        top = knee + d * cuff
+        cuts.append((sign, top, -d / np.linalg.norm(d)))
+    obj = util.join(parts, name)
+    for mm in list(obj.modifiers):
+        obj.modifiers.remove(mm)
+    # One volume per boot (the hull and the leg merged), then calm it: leather does not show tendons or veins.
+    rm = obj.modifiers.new("Remesh", 'REMESH')
+    rm.mode = 'VOXEL'
+    rm.voxel_size = spec.get("voxel", 0.004)
+    rm.adaptivity = 0.0
+    util.apply_modifier(obj, rm.name)
+    E = util.edges(obj)
+    util.set_positions(obj, util.taubin(util.positions(obj), E, spec.get("smooth", 24)))
+    util.set_positions(obj, util.positions(obj) + util.normals(obj) * off)
+    tree = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
+    Pn, moved = util.push_out(util.positions(obj), tree, off * 0.7)
+    util.set_positions(obj, Pn)
+    log(f"{name}: remeshed {len(Pn)} verts, {moved} pushed clear of the skin")
+    # The cuff: a clean cut square to the shin.
+    for sign, co, no in cuts:
+        util.cut_plane(obj, co, no, keep_below=True, where=lambda c, sign=sign: c.x * sign > 0)
+    util.decimate_to(obj, spec.get("tris", 3000))
+    util.smooth_boundary(obj, 12)
+    # The sole: pressed flat underneath, a welt standing a little proud round it.
+    P = util.positions(obj)
+    N = util.normals(obj)
+    z0 = floor - spec.get("sole_drop", 0.002)
+    flat = (P[:, 2] < z0 + 0.012) & (N[:, 2] < -0.45)
+    P[flat, 2] = z0
+    h = P[:, 2] - z0
+    nh = N[:, :2] / np.maximum(np.linalg.norm(N[:, :2], axis=1, keepdims=True), 1e-6)
+    side_ness = np.clip((np.linalg.norm(N[:, :2], axis=1) - 0.25) / 0.4, 0, 1)
+    lip = welt * (1 - smoothstep(sole_h - 0.004, sole_h + 0.002, h)) * side_ness
+    P[:, :2] += nh * lip[:, None]
+    util.set_positions(obj, P)
+    sol = obj.modifiers.new("Rim", 'SOLIDIFY')
+    sol.thickness_clamp = 1.0
+    sol.thickness = spec.get("rim", 0.003)
+    sol.offset = -1
+    sol.use_rim_only = True
+    util.apply_modifier(obj, sol.name)
+    util.shade_smooth(obj)
+    util.transfer_weights(obj, body)
+    legs = {1: np.array([m["thigh_l"], m["calf_l"], m["foot_l"]]), -1: np.array([m["thigh_r"], m["calf_r"], m["foot_r"]])}
+    set_param(obj, lambda co, vi, fi: lateral_param(co, legs, crotch_height(body)))
+    level_top(obj)
+    # Heights in the pattern are measured from the underside of the sole.
+    attr = obj.data.attributes["param"]
+    vec = np.empty(len(obj.data.loops) * 3)
+    attr.data.foreach_get("vector", vec)
+    vec = vec.reshape(-1, 3)
+    vec[:, 1] -= z0
+    attr.data.foreach_set("vector", vec.reshape(-1))
+    log(f"{name}: {util.tri_count(obj)} tris (sole at {z0:.3f}, cuff {cuff})")
+    return obj
+
+
+def foot_hidden(body):
+    """Body vertices a pair of boots hides for good: the feet below the ankle."""
+    return util.weights_matrix(body, sided(["foot", "ball"])).sum(axis=1) >= 0.5
+
+
 # ---------- loose tops ----------
 
 def loose_top(body, arm, m, spec, name="top"):

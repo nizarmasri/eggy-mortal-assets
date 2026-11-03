@@ -244,6 +244,28 @@ def leather(name, color):
     return mat
 
 
+def boot(name, color, sole=0.02):
+    """Boot leather: fine grain and a little wear, a groove where the upper meets the sole and a stitched
+    welt just above it (param y is the height above the sole's underside)."""
+    mat = util.new_material(name)
+    g = G(mat)
+    co = g.coords("Object")
+    grain = g.n("ShaderNodeTexVoronoi", Scale=320.0, _feature='DISTANCE_TO_EDGE')
+    g.link(co, grain.inputs["Vector"])
+    wear = g.noise(co, 60.0, 3.0)
+    u, v, w = g.sep(g.attr("param"))
+    cx, cy, cz = g.sep(co)
+    groove = g.math('LESS_THAN', g.math('ABSOLUTE', g.math('SUBTRACT', v, sole)), 0.0016)
+    line = g.math('LESS_THAN', g.math('ABSOLUTE', g.math('SUBTRACT', v, sole + 0.006)), 0.0009)
+    dash = g.math('GREATER_THAN', g.math('SINE', g.math('MULTIPLY', g.math('ADD', cx, cy), 1100.0)), 0.2)
+    stitch = g.math('MULTIPLY', line, dash)
+    col = g.mix(g.math('MULTIPLY', wear, 0.3), color, (0.02, 0.012, 0.008, 1))
+    col = g.mix(g.math('MULTIPLY', groove, 0.7), col, (0.01, 0.01, 0.01, 1))
+    height = g.math('ADD', g.math('MULTIPLY', grain.outputs["Distance"], 0.5), g.math('SUBTRACT', g.math('MULTIPLY', stitch, 0.4), groove))
+    g.principled(col, g.math('ADD', 0.38, g.math('MULTIPLY', wear, 0.16)), height, strength=0.3, distance=0.0008)
+    return mat
+
+
 def cord(name, color):
     """Twisted cord: a helix of plies along param.x."""
     mat = util.new_material(name)

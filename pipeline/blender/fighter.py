@@ -91,6 +91,8 @@ def shader_for(name, sh, info):
         return shaders.tape(name, col, band=sh.get("band", 0.024), angle=sh.get("angle", 0.55))
     if kind == "leather":
         return shaders.leather(name, col)
+    if kind == "boot":
+        return shaders.boot(name, col, sole=sh.get("sole", 0.02))
     if kind == "cord":
         return shaders.cord(name, col)
     if kind == "hair":
@@ -101,6 +103,7 @@ def shader_for(name, sh, info):
 
 
 late = []
+hide_feet = False
 if preset.get("info"):
     info = {"waist_z": preset["info"]["waist"] * m["height"], "knee_z": preset["info"]["knee"] * m["height"], "hem_z": 0.06 * m["height"], "crotch": outfit.crotch_height(bod)}
 for item in preset.get("outfit", []):
@@ -118,6 +121,9 @@ for item in preset.get("outfit", []):
         o = outfit.wraps(bod, arm, m, item, name=name)
     elif kind == "tight":
         o = outfit.tight(bod, arm, m, item, name=name)
+    elif kind == "boots":
+        o = outfit.boots(bod, arm, m, item, name=name)
+        hide_feet = True
     elif kind == "loose_top":
         o = outfit.loose_top(bod, arm, m, item, name=name)
     elif kind == "waist_cord":
@@ -204,6 +210,9 @@ for z0, z1 in hide_zones:
     armw = util.weights_matrix(bod, outfit.sided(outfit.ARM_BONES)).sum(axis=1)
     hidden = (P[:, 2] > z0) & (P[:, 2] < z1) & (armw < 0.05)
     util.delete_faces(bod, util.faces_of_vertices(bod, hidden))
+if hide_feet:
+    # Boots hide the feet for good: no toe can show through them however the foot bends.
+    util.delete_faces(bod, util.faces_of_vertices(bod, outfit.foot_hidden(bod)))
 util.limit_and_normalize(bod)
 for g in list(bod.vertex_groups):
     if g.name not in export.JOINTS:

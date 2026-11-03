@@ -92,37 +92,19 @@
    }
   },
   {
-   "kind": "tight",
+   "kind": "boots",
    "name": "shoes",
-   "bones": [
-    "foot_l",
-    "foot_r",
-    "ball_l",
-    "ball_r",
-    "calf_l",
-    "calf_r"
-   ],
-   "along": {
-    "calf_l": [
-     0.78,
-     1.2
-    ],
-    "calf_r": [
-     0.78,
-     1.2
-    ]
-   },
-   "offset": 0.005,
-   "sole": 0.004,
+   "cuff": 0.78,
+   "sole_h": 0.015,
    "shader": {
-    "type": "leather",
+    "type": "boot",
     "color": [
      0.05,
      0.045,
      0.045
-    ]
-   },
-   "smooth": 10
+    ],
+    "sole": 0.017
+   }
   },
   {
    "kind": "wraps",

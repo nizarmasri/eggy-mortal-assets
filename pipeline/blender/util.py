@@ -307,6 +307,82 @@ def despike(obj, rounds=3, factor=2.0, floor=0.012):
     return fixed
 
 
+def edges(obj):
+    """(n_edges, 2) vertex indices."""
+    me = obj.data
+    E = np.empty(len(me.edges) * 2, dtype=np.int64)
+    me.edges.foreach_get("vertices", E)
+    return E.reshape(-1, 2)
+
+
+def taubin(P, E, iterations=10, lam=0.5, mu=-0.53, weight=None):
+    """Taubin's shrink-free smoothing of positions P (n, 3) over the edges E; `weight` (n,) scales how far each
+    vertex may move (0 keeps it put)."""
+    P = np.array(P, dtype=np.float64)
+    n = len(P)
+    cnt = np.zeros(n)
+    np.add.at(cnt, E[:, 0], 1)
+    np.add.at(cnt, E[:, 1], 1)
+    cnt = np.maximum(cnt, 1)
+    w = np.ones(n) if weight is None else np.asarray(weight, dtype=np.float64)
+    for _ in range(iterations):
+        for f in (lam, mu):
+            acc = np.zeros_like(P)
+            np.add.at(acc, E[:, 0], P[E[:, 1]])
+            np.add.at(acc, E[:, 1], P[E[:, 0]])
+            P += (f * w)[:, None] * (acc / cnt[:, None] - P)
+    return P
+
+
+def grow(mask, E, rings=1):
+    """A vertex mask grown by `rings` edges."""
+    m = np.asarray(mask, dtype=bool).copy()
+    for _ in range(rings):
+        nxt = m.copy()
+        nxt[E[m[E[:, 0]], 1]] = True
+        nxt[E[m[E[:, 1]], 0]] = True
+        m = nxt
+    return m
+
+
+def cut_plane(obj, co, no, keep_below=True, where=None):
+    """Cut a mesh along a plane and drop one side: the side `no` points to (keep_below) or the other. `where`
+    (a function of a vertex position) limits the cut to part of the mesh (one leg of two)."""
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    if where is None:
+        geom = list(bm.verts) + list(bm.edges) + list(bm.faces)
+    else:
+        fs = [f for f in bm.faces if where(f.calc_center_median())]
+        geom = list({v for f in fs for v in f.verts}) + list({e for f in fs for e in f.edges}) + fs
+    bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=Vector(co), plane_no=Vector(no),
+                           clear_outer=keep_below, clear_inner=not keep_below)
+    loose = [v for v in bm.verts if not v.link_faces]
+    if loose:
+        bmesh.ops.delete(bm, geom=loose, context='VERTS')
+    bm.to_mesh(obj.data)
+    bm.free()
+    obj.data.update()
+
+
+def push_out(P, tree, clearance, only=None):
+    """Move every point closer than `clearance` to (or inside) the surface in `tree` out to that distance along
+    the surface normal. Returns the new positions and how many moved."""
+    P = np.array(P, dtype=np.float64)
+    moved = 0
+    for i in range(len(P)):
+        if only is not None and not only[i]:
+            continue
+        loc, nrm, _, _ = tree.find_nearest(Vector(P[i]))
+        if loc is None:
+            continue
+        d = (Vector(P[i]) - loc).dot(nrm)
+        if d < clearance:
+            P[i] = np.array(loc + nrm * clearance)
+            moved += 1
+    return P, moved
+
+
 def decimate_to(obj, target_tris, symmetric=True):
     """Collapse-decimate a mesh (no other modifiers on it) to about target_tris; vertex groups follow."""
     tris = tri_count(obj)
