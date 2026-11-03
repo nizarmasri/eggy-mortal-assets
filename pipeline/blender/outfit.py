@@ -121,10 +121,6 @@ def loose_pants(body, arm, m, spec, name="pants"):
         rmin = (0.072 * f_knee + 0.012 * f_hem + (0.082 * (1 - f_knee))) * k * loose
         newr = rl + ease
         newr = newr + np.maximum(0, rmin - newr) * 0.85
-        # Folds: a few soft vertical waves around the tube, more at the hem.
-        ang = np.arctan2(rd[:, 1], rd[:, 0])
-        wav = util.fbm3(np.stack([np.cos(ang) * 2.2, np.sin(ang) * 2.2, z * 7.0 + sign * 3], axis=1), 3, seed=4)
-        newr += (wav - 0.5) * 0.012 * k * (0.4 + 0.8 * f_hem)
         leg_pos = axis_p + rd * newr[:, None]
         # Above the crotch the hips are inflated along their normals instead.
         hip_pos = q + N[side] * (0.010 + 0.012 * np.clip((waist_z - z) / max(waist_z - crotch, 1e-3), 0, 1))[:, None] * k * loose
@@ -144,6 +140,26 @@ def loose_pants(body, arm, m, spec, name="pants"):
     while obj.modifiers[0].name != sm.name:
         bpy.ops.object.modifier_move_up(modifier=sm.name)
     bpy.ops.object.modifier_apply(modifier=sm.name)
+    # Then the cloth's own shape: long drape folds down the legs, bunching above the knee and at the hem.
+    P = util.positions(obj)
+    Nn = util.normals(obj)
+    disp = np.zeros(len(P))
+    for sign, pts in legs.items():
+        side = (P[:, 0] * sign) > 0
+        q = P[side]
+        axis_p, axis_t, _ = closest_on_polyline(q, pts)
+        r = q - axis_p
+        ang = np.arctan2(r[:, 1], r[:, 0])
+        z = q[:, 2]
+        legness = 1 - smoothstep(crotch - 0.02, crotch + 0.08, z)
+        drape = util.fbm3(np.stack([np.cos(ang) * 1.6, np.sin(ang) * 1.6, z * 2.2 + sign * 5], axis=1), 3, seed=4) - 0.5
+        drape *= 0.030 * k * (0.35 + 0.9 * np.clip((knee_z + 0.15 - z) / 0.4, 0, 1)) * legness
+        knee = np.exp(-((z - (knee_z + 0.03)) / 0.07) ** 2) * np.sin(z * 120 + 3 * util.fbm3(np.stack([np.cos(ang), np.sin(ang), z * 3], axis=1), 2, seed=8))
+        hem = np.exp(-((z - (hem_z + 0.05)) / 0.05) ** 2) * np.sin(z * 150 + 4 * util.fbm3(np.stack([np.cos(ang) * 2, np.sin(ang) * 2, z * 2], axis=1), 2, seed=9))
+        disp[side] = drape + (0.006 * knee + 0.005 * hem) * k * legness
+    hips = P[:, 2] > crotch
+    disp[hips] += (util.fbm3(P[hips] * np.array([12, 12, 4.0]), 2, seed=6) - 0.5) * 0.008 * k
+    util.set_positions(obj, P + Nn * disp[:, None])
     # Rolled hem and waistband: extrude the open edges inward, so the cloth reads thick from any side.
     bm = bmesh.new()
     bm.from_mesh(obj.data)
@@ -379,9 +395,25 @@ def short_hair(body, arm, m, egg, spec, name="hair"):
         for v in body.data.vertices:
             if any(x.group == g.index for x in v.groups):
                 ids[v.index] = True
-    # Grow the scalp a ring or two so the hairline meets the mask's edge and the nape.
-    faces = util.faces_of_vertices(body, ids, mode="any")
+    faces = util.faces_of_vertices(body, ids, mode=spec.get("grow", "all"))
     shell = util.extract_faces(body, faces, name)
+    # A clean hairline: relax the boundary along itself, then put it back on the scalp.
+    head_tree = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
+    bm = bmesh.new()
+    bm.from_mesh(shell.data)
+    edge_verts = [v for v in bm.verts if v.is_boundary]
+    for _ in range(spec.get("hairline_smooth", 6)):
+        new_co = {}
+        for v in edge_verts:
+            nb = [e.other_vert(v) for e in v.link_edges if e.is_boundary]
+            if len(nb) == 2:
+                new_co[v] = v.co * 0.4 + (nb[0].co + nb[1].co) * 0.3
+        for v, c in new_co.items():
+            loc, nrm, _, _ = head_tree.find_nearest(c)
+            v.co = loc if loc is not None else c
+    bm.to_mesh(shell.data)
+    bm.free()
+    shell.data.update()
     S = util.positions(shell)
     shell_n = util.normals(shell)
     util.set_positions(shell, S + shell_n * spec.get("thickness", 0.0035))

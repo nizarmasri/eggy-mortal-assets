@@ -73,8 +73,48 @@ def source_diffuse(obj):
     return None
 
 
-def body_maps(low, high, size, outdir, tint=(1, 1, 1), hide=()):
-    """Albedo from MakeHuman's skin texture (same UVs), and baked normal, roughness, cavity and AO."""
+def _load_array(path, size):
+    img = bpy.data.images.load(path, check_existing=False)
+    img.colorspace_settings.name = 'Non-Color'
+    a = util.image_array(img)[..., :3]
+    bpy.data.images.remove(img)
+    return util.resize(a, size)
+
+
+def _blur(a, r):
+    """Separable box blur (radius r texels, three passes ~ gaussian), edges clamped."""
+    out = a.astype(np.float64)
+    for _ in range(3):
+        for axis in (0, 1):
+            pad = [(0, 0)] * out.ndim
+            pad[axis] = (r, r)
+            p = np.pad(out, pad, mode='edge')
+            c = np.cumsum(p, axis=axis)
+            c = np.concatenate([np.zeros_like(np.take(c, [0], axis=axis)), c], axis=axis)
+            n = out.shape[axis]
+            hi = np.take(c, np.arange(2 * r + 1, 2 * r + 1 + n), axis=axis)
+            lo = np.take(c, np.arange(0, n), axis=axis)
+            out = (hi - lo) / (2 * r + 1)
+    return out
+
+
+def rnm(base, detail, strength=1.0):
+    """Reoriented normal mapping: detail laid onto base (both 0..1 encoded tangent-space normals)."""
+    n1 = base * 2 - 1
+    n2 = detail * 2 - 1
+    n2[..., :2] *= strength
+    n2 /= np.linalg.norm(n2, axis=-1, keepdims=True)
+    t = n1 + np.array([0, 0, 1.0])
+    u = n2 * np.array([-1, -1, 1.0])
+    r = t * (np.sum(t * u, axis=-1, keepdims=True) / np.maximum(t[..., 2:3], 1e-4)) - u
+    r /= np.maximum(np.linalg.norm(r, axis=-1, keepdims=True), 1e-6)
+    return r * 0.5 + 0.5
+
+
+def body_maps(low, high, size, outdir, tint=(1, 1, 1), hide=(), detail=None):
+    """Albedo from MakeHuman's skin texture (same UVs), and baked normal, roughness, cavity and AO. `detail`
+    names a MakeHuman skin's normal and specular maps (same UV layout) laid over the bake for anatomy and
+    skin texture: {normal, spec, strength, highpass (texels, 0 = keep everything), flip_y}."""
     src = source_diffuse(low)
     assert src is not None, "skin texture not found"
     a = util.image_array(src)[..., :3]
@@ -129,8 +169,30 @@ def body_maps(low, high, size, outdir, tint=(1, 1, 1), hide=()):
     G = util.image_array(rgh)[..., 0]
     B = util.image_array(cav)[..., 0]
     R = 0.35 + 0.65 * R  # the renderer multiplies this into indirect light only; keep it gentle
+    N = util.image_array(nrm)[..., :3]
+    if detail:
+        import mp
+        dn = mp.AssetService.find_asset_absolute_path(detail["normal"], "skins")
+        if dn:
+            D = _load_array(dn, size)
+            if detail.get("flip_y"):
+                D[..., 1] = 1 - D[..., 1]
+            hp = detail.get("highpass", 0)
+            if hp:
+                d = D * 2 - 1
+                d = d - _blur(d, hp) + np.array([0, 0, 1.0])
+                d /= np.linalg.norm(d, axis=-1, keepdims=True)
+                D = d * 0.5 + 0.5
+            N = rnm(N, D, detail.get("strength", 1.0))
+            log("detail normal from", os.path.basename(dn))
+        ds = mp.AssetService.find_asset_absolute_path(detail["spec"], "skins") if detail.get("spec") else None
+        if ds:
+            S = _load_array(ds, size)[..., 0]
+            S = (S - S.mean()) / max(S.std(), 1e-3)
+            G = np.clip(G - 0.07 * S, 0.25, 0.8)
+            log("roughness from", os.path.basename(ds))
     orm = util.image_from_array("body_orm", np.stack([R, G, B], axis=-1), os.path.join(outdir, "body_orm.png"), non_color=True)
-    util.save_png(nrm, os.path.join(outdir, "body_normal.png"))
+    nrm = util.image_from_array("body_normal", N, os.path.join(outdir, "body_normal.png"), non_color=True)
     return albedo, orm, nrm
 
 

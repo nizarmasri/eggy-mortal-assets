@@ -89,8 +89,8 @@ def reset(arm):
 
 STANCES = {
     # Karate kamae: left foot forward, bladed, lead fist out at chest height, rear fist chambered at the chin.
-    "karate": dict(drop=0.06, blade=-28, lean=6, counter=14, feet=((0.16, -0.26), (-0.13, 0.20)),
-                   lead=(0.06, -0.36, -0.08), rear=(-0.07, -0.16, -0.02), head_tilt=8, knee_out=0.35),
+    "karate": dict(drop=0.06, blade=-30, lean=7, counter=12, feet=((0.15, -0.27), (-0.13, 0.21)),
+                   lead=(0.03, -0.34, -0.15), rear=(-0.08, -0.19, -0.08), head_tilt=6, knee_out=0.35),
     # A boxer's guard: both fists high, chin down, weight forward.
     "boxing": dict(drop=0.05, blade=-22, lean=10, counter=10, feet=((0.13, -0.18), (-0.14, 0.18)),
                    lead=(0.05, -0.27, 0.02), rear=(-0.08, -0.16, 0.04), head_tilt=12, knee_out=0.3),

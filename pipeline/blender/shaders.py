@@ -164,7 +164,7 @@ def fabric(name, color, knee_z=0.5, hem_z=0.15, seed=0.0, weave=1.0, stains=0.0)
         keep = g.math('GREATER_THAN', g.noise(co, 2.5, 2.0), 1.0 - 0.32 * stains)
         stain = g.math('MULTIPLY', is_spot, keep)
         out = g.mix(g.math('MULTIPLY', stain, 0.85), out, rgb((0.33, 0.06, 0.05)))
-    g.principled(out, 0.86, height, strength=0.55, distance=0.004)
+    g.principled(out, 0.86, height, strength=0.8, distance=0.005)
     return mat
 
 
@@ -219,7 +219,7 @@ def hair(name, color, tip=(0.06, 0.05, 0.045)):
     clumps = g.noise(g.comb(g.math('MULTIPLY', u, 90.0), g.math('MULTIPLY', v, 6.0), w), 1.0, 2.0)
     mixv = g.math('ADD', g.math('MULTIPLY', strands, 0.7), g.math('MULTIPLY', clumps, 0.3))
     col = g.mix(g.ramp(mixv, [(0.35, (0, 0, 0)), (0.75, (1, 1, 1))]), color, (*util.srgb_to_linear(tip).tolist(), 1))
-    rough = g.math('ADD', 0.38, g.math('MULTIPLY', strands, 0.2))
+    rough = g.math('ADD', 0.5, g.math('MULTIPLY', strands, 0.2))
     g.principled(col, rough, mixv, strength=0.7, distance=0.0012)
     return mat
 

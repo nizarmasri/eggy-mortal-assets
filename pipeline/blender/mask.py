@@ -66,7 +66,7 @@ class Egg:
         du = self.world(phi + e, th) - p
         dv = self.world(phi, th + e) - p
         n = np.cross(dv, du)
-        n /= np.linalg.norm(n, axis=-1, keepdims=True)
+        n /= np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-12)
         return n
 
     def _tables(self):
@@ -122,61 +122,60 @@ class Egg:
 
 # ---------- fitting ----------
 
-def fit(body, eyes, extra_clearance=0.0):
-    """An egg that holds the whole face and the scalp shell with room to spare, eye slits over the eyes."""
+def _group_ids(body, name):
+    g = body.vertex_groups.get(name)
+    if g is None:
+        return np.zeros(0, dtype=int)
+    return np.array([v.index for v in body.data.vertices if any(x.group == g.index for x in v.groups)], dtype=int)
+
+
+def fit(body, eyes, spec=None):
+    """An egg sized from the face's landmarks: its sides end just in front of the ears, its chin tip a little
+    under the chin, its top over the crown, and it clears the nose, brows and the hair shell by a margin."""
+    spec = spec or {}
     P = util.positions(body)
     N = util.normals(body)
     W = util.weights_matrix(body, ["head"])
     head = W[:, 0] >= 0.5
+    ears = _group_ids(body, "ears")
+    lips = _group_ids(body, "lips")
+    E = util.positions(eyes)
+    eye_z = float(E[:, 2].mean())
+    eye_y = float(E[:, 1].mean())
     H = P[head]
-    Hn = N[head]
-    zmin, zmax = float(H[:, 2].min()), float(H[:, 2].max())
-    ymin, ymax = float(H[:, 1].min()), float(H[:, 1].max())
-    xmax = float(np.abs(H[:, 0]).max())
-    # Ears sit beside the head: the mask's edges must stay in front of them.
-    ears = body.vertex_groups.get("ears")
-    ear_front = None
-    if ears is not None:
-        ids = [v.index for v in body.data.vertices if any(g.group == ears.index for g in v.groups)]
-        if ids:
-            ear_front = float(P[ids, 1].min())
-    chin = zmin + 0.25 * (zmax - zmin)  # the head group reaches into the neck; the jaw line is above
-    front = H[H[:, 1] < (ymin + ymax) / 2]
-    chin = float(np.percentile(front[:, 2], 1.5))
-    C = np.array([0.0, (ymin + ymax) / 2 - 0.004, (chin + zmax) / 2 + 0.004])
-    a = xmax + 0.006
-    b = (ymax - ymin) / 2 + 0.014
-    h = (zmax - chin) / 2 + 0.018
-    # Points the shell must clear: the head pushed out along its normals (hair shell and a gap), the eyes.
-    pts = H + Hn * (0.010 + extra_clearance)
-    if eyes is not None:
-        E = util.positions(eyes)
-        pts = np.concatenate([pts, E + np.array([0, -0.006, 0])])
-    egg = Egg(C, a, b, h)
-    for it in range(60):
+    crown = float(H[:, 2].max())
+    mouth_z = float(P[lips, 2].mean()) if len(lips) else eye_z - 0.075
+    chin_z = mouth_z - spec.get("chin_below_mouth", 0.048)
+    ear_front = float(P[ears, 1].min()) if len(ears) else eye_y + 0.07
+    face = head & (P[:, 2] > chin_z - 0.005) & (P[:, 1] < ear_front)
+    face[ears] = False
+    nose_band = face & (np.abs(P[:, 0]) < 0.02) & (P[:, 2] < eye_z) & (P[:, 2] > mouth_z)
+    nose_y = float(P[nose_band, 1].min())
+    xmax = float(np.abs(P[face, 0]).max())
+    C = np.array([0.0, ear_front - spec.get("edge_ahead", 0.004), 0.5 * (chin_z - spec.get("tip_below_chin", 0.014) + crown + spec.get("top_over_crown", 0.004))])
+    h = 0.5 * (crown + spec.get("top_over_crown", 0.004) - (chin_z - spec.get("tip_below_chin", 0.014)))
+    a = xmax + spec.get("side_gap", 0.010)
+    egg = Egg(C, a, 0.1, h, k=spec.get("k", 0.12), tilt=math.radians(spec.get("tilt", 6)), phimax=math.radians(90))
+    # Depth: the nose tip and a clearance in front of it, at the nose's latitude.
+    nz = egg.to_local(np.array([[0, nose_y, eye_z - 0.03]]))[0]
+    th_n = math.acos(max(-1, min(1, nz[2] / h)))
+    b = (-nz[1] + spec.get("nose_gap", 0.012) + THICK) / max(egg.rho(th_n), 0.3)
+    egg = Egg(C, a, b, h, k=egg.k, tilt=egg.tilt, phimax=egg.phimax)
+    # Everything under the shell must clear its inner surface: the face, and the scalp pushed out by the hair.
+    pts = np.concatenate([P[face] + N[face] * spec.get("clearance", 0.008), E + np.array([0, -0.004, 0])])
+    for it in range(40):
         phi, th, r = egg.params(pts)
-        covered = (np.abs(phi) < egg.phimax) & (pts[:, 2] > chin - 0.01)
-        limit = 1 - (THICK + 0.002) / min(egg.a, egg.b)
+        covered = np.abs(phi) < egg.phimax
+        limit = 1 - (THICK + 0.0015) / min(egg.a, egg.b)
         bad = covered & (r > limit)
-        if not bad.any():
+        if bad.sum() < 3:
             break
         q = egg.to_local(pts[bad])
-        frontish = np.abs(q[:, 0]) / egg.a < 0.45
-        tall = np.abs(q[:, 2]) / egg.h > 0.75
-        if frontish.mean() > 0.4:
-            egg.b *= 1.015
-            egg.C[1] -= 0.0008
-        if (~frontish).mean() > 0.4:
-            egg.a *= 1.015
-        if tall.mean() > 0.3:
-            egg.h *= 1.012
-        egg = Egg(egg.C, egg.a, egg.b, egg.h)
-    # The edges end in front of the ears.
-    if ear_front is not None:
-        q = ear_front - 0.006 - egg.C[1]
-        c = max(-0.35, min(0.35, -q / egg.b))
-        egg = Egg(egg.C, egg.a, egg.b, egg.h, phimax=min(math.radians(100), max(math.radians(80), math.acos(c))))
-    log(f"egg: C={egg.C.round(4).tolist()} a={egg.a:.4f} b={egg.b:.4f} h={egg.h:.4f} phimax={math.degrees(egg.phimax):.1f}")
+        side = np.abs(q[:, 0]) / egg.a > 0.6
+        tall = np.abs(q[:, 2]) / egg.h > 0.7
+        egg = Egg(egg.C, egg.a * (1.01 if side.mean() > 0.3 else 1.0), egg.b * (1.01 if (~side).mean() > 0.3 else 1.0),
+                  egg.h * (1.008 if tall.mean() > 0.3 else 1.0), k=egg.k, tilt=egg.tilt, phimax=egg.phimax)
+    log(f"egg: C={egg.C.round(4).tolist()} a={egg.a:.4f} b={egg.b:.4f} h={egg.h:.4f} (nose {nose_y:.3f}, ears {ear_front:.3f}, chin {chin_z:.3f}, crown {crown:.3f}, {it} grow steps)")
     return egg
 
 

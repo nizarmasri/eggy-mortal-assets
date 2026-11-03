@@ -103,10 +103,10 @@ def _shot(path, cam, w, h, samples=64):
 
 def studio_lights(centre_z):
     t = Vector((0, 0, centre_z))
-    _light("key", 'AREA', (-2.2, -2.8, 2.9), t, (1.0, 0.86, 0.70), 900, 1.6)
-    _light("fill", 'AREA', (2.6, -2.2, 1.4), t, (0.85, 0.9, 1.0), 180, 3.0)
-    _light("rim", 'AREA', (2.0, 2.8, 2.6), t + Vector((0, 0, 0.3)), (0.62, 0.76, 1.0), 900, 1.2)
-    _light("rim2", 'AREA', (-2.2, 2.4, 2.0), t, (1.0, 0.78, 0.58), 420, 1.2)
+    _light("key", 'AREA', (-2.4, -2.6, 3.2), t, (1.0, 0.84, 0.66), 650, 1.2)
+    _light("fill", 'AREA', (2.8, -2.4, 1.2), t, (0.8, 0.86, 1.0), 70, 3.0)
+    _light("rim", 'AREA', (2.0, 2.8, 2.6), t + Vector((0, 0, 0.3)), (0.62, 0.76, 1.0), 700, 1.0)
+    _light("rim2", 'AREA', (-2.2, 2.4, 2.0), t, (1.0, 0.78, 0.58), 300, 1.0)
 
 
 def all_shots(arm, m, outdir, stance_name, fighter_id, hidden=()):
@@ -119,16 +119,17 @@ def all_shots(arm, m, outdir, stance_name, fighter_id, hidden=()):
     cz = H * 0.5
     studio_lights(cz)
     out = {}
-    dist = 5.2 * H / 1.78
+    vfov = 24.0
+    dist = (H * 1.16) / (2 * math.tan(math.radians(vfov / 2)))
     # Rest pose, front: for checking the mesh itself.
     pose.reset(arm)
-    cam = _camera("cam", (0, -dist, cz), (0, 0, cz), lens=85)
+    cam = _camera("cam", (0, -dist, cz), (0, 0, cz), vfov=vfov)
     out["rest"] = _shot(os.path.join(outdir, f"{fighter_id}_rest.png"), cam, 768, 1024)
     pose.stance(arm, m, stance_name)
     cz2 = cz - 0.04
     for name, ang in (("front", 0), ("three_quarter", 38), ("back", 180)):
         a = math.radians(ang)
-        cam = _camera("cam", (dist * math.sin(a), -dist * math.cos(a), cz2), (0, 0, cz2), lens=85)
+        cam = _camera("cam", (dist * math.sin(a), -dist * math.cos(a), cz2), (0, 0, cz2), vfov=vfov)
         out[name] = _shot(os.path.join(outdir, f"{fighter_id}_{name}.png"), cam, 768, 1024)
     # The mask close up, three-quarter, at head height.
     hp = pose.head(arm, "head")
@@ -149,7 +150,7 @@ def all_shots(arm, m, outdir, stance_name, fighter_id, hidden=()):
     _light("g_rim", 'AREA', (0.6, 2.6, 2.4), Vector((-0.55, 0, 1.2)), (0.55, 0.72, 1.0), 1300, 1.0)
     _light("g_fill", 'AREA', (1.5, -3.0, 1.2), Vector((-0.55, 0, 1.0)), (0.75, 0.8, 0.95), 90, 3.0)
     _world((0.006, 0.0065, 0.008))
-    cam = _camera("cam_game", (0, -3.5, 1.3), (0, 0, 1.3), vfov=35)
+    cam = _camera("cam_game", (0, -3.5, 1.3), (0, 0, 1.0), vfov=35)
     out["game"] = _shot(os.path.join(outdir, f"{fighter_id}_game.png"), cam, 1664, 768, samples=64)
     for n in ("g_key", "g_rim", "g_fill"):
         bpy.data.objects.remove(bpy.data.objects[n], do_unlink=True)

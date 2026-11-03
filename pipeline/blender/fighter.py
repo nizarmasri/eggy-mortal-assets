@@ -91,7 +91,7 @@ for item in preset.get("outfit", []):
         raise ValueError(f"unknown outfit kind {kind}")
 
 stage("mask")
-egg = mask.fit(bod, eyes)
+egg = mask.fit(bod, eyes, spec_mask.get("fit", {}))
 mask_obj, centres = mask.build(egg, eyes, bod, spec_mask)
 
 hair_pieces = []
@@ -145,7 +145,7 @@ bpy.ops.object.mode_set(mode='OBJECT')
 
 stage("bake body")
 bake.cycles()
-body_albedo, body_orm, body_nrm = bake.body_maps(bod, hi, size_body, TEX, tint=preset["human"].get("tint", (1, 1, 1)), hide=[mask_obj, gear])
+body_albedo, body_orm, body_nrm = bake.body_maps(bod, hi, size_body, TEX, tint=preset["human"].get("tint", (1, 1, 1)), hide=[mask_obj, gear], detail=preset["human"].get("detail"))
 stage("bake gear")
 gear_albedo, gear_orm, gear_nrm = bake.gear_maps(gear, size_gear, TEX, hide=[hi])
 
@@ -160,7 +160,7 @@ mask.crack_image(cv, crack, TEX)
 mask.uv_unwrap(mask_obj, egg)
 
 stage("final materials")
-skin = shaders.image_material("skin", body_albedo, body_orm, body_nrm, subsurface=0.12)
+skin = shaders.image_material("skin", body_albedo, body_orm, body_nrm, subsurface=0.05)
 util.set_material(bod, skin)
 gear_mat = shaders.image_material("gear", gear_albedo, gear_orm, gear_nrm, double_sided=True)
 gear.data.materials.clear()
