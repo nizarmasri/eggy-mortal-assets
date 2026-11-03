@@ -72,6 +72,10 @@ def stroke_field(X, Y, ctrl, width, seed=0, n=500):
         best_i[upd] = j[upd] + k
     tt = L[best_i] / L[-1]
     off = (xs - pts[best_i, 0]) * nrm[best_i, 0] + (ys - pts[best_i, 1]) * nrm[best_i, 1]
+    # Past either end the nearest sample is the end itself: those texels are outside the stroke.
+    along = (xs - pts[best_i, 0]) * tang[best_i, 0] + (ys - pts[best_i, 1]) * tang[best_i, 1]
+    beyond = ((best_i == 0) & (along < 0)) | ((best_i == n - 1) & (along > 0))
+    off = np.where(beyond, 9.0, off)
     t[box] = tt
     s[box] = off
     return t, s, L[-1]

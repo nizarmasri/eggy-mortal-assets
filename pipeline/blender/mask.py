@@ -173,13 +173,18 @@ def fit(body, eyes, spec=None):
             break
         q = egg.to_local(pts[bad])
         top = q[:, 2] / egg.h > 0.45
-        side = (np.abs(q[:, 0]) / egg.a > 0.6) & ~top
-        front = ~top & ~side
+        bottom = q[:, 2] / egg.h < -0.45
+        side = (np.abs(q[:, 0]) / egg.a > 0.6) & ~top & ~bottom
+        front = ~top & ~side & ~bottom
         a2, b2, h2, C2 = egg.a, egg.b, egg.h, egg.C.copy()
         if top.mean() > 0.25:
             # The skull's dome: lengthen the egg upwards, keeping the chin tip where it is.
             h2 = egg.h * 1.008
             C2[2] += (h2 - egg.h)
+        if bottom.mean() > 0.25:
+            # The jaw: lengthen it downwards (the narrow end slips under the chin), the top where it is.
+            h2 = h2 * 1.008
+            C2[2] -= (h2 - egg.h) if top.mean() <= 0.25 else 0.0
         if side.mean() > 0.25:
             a2 *= 1.008
         if front.mean() > 0.25:

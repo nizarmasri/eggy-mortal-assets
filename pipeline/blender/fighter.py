@@ -64,7 +64,7 @@ stage("reference rig")
 ref_axes = body.reference_axes(reference)
 
 stage("body")
-arm, bod, eyes = body.build(preset)
+arm, bod, eyes, mhclo = body.build(preset)
 body.normalise_rolls(arm, ref_axes)
 m = body.measurements(arm, bod)
 log("height", round(m["height"], 3))
@@ -73,23 +73,66 @@ teeth = body.teeth(bod, arm)
 stage("gear")
 pieces = []
 info = {}
+pants = None
+hide_zones = []
+
+
+def shader_for(name, sh, info):
+    kind = sh.get("type", "fabric")
+    col = shaders.rgb(sh.get("color", (0.5, 0.5, 0.5)))
+    if kind == "fabric":
+        return shaders.fabric(name, col, knee_z=info.get("knee_z", 0.5), hem_z=info.get("hem_z", 0.15), stains=sh.get("stains", 0.0), weave=sh.get("weave", 1.0))
+    if kind == "satin":
+        return shaders.satin(name, col, rough=sh.get("rough", 0.32))
+    if kind == "belt":
+        return shaders.belt(name, col, edge=shaders.rgb(sh.get("edge", (0.5, 0.48, 0.45))))
+    if kind == "tape":
+        return shaders.tape(name, col, band=sh.get("band", 0.024), angle=sh.get("angle", 0.55))
+    if kind == "leather":
+        return shaders.leather(name, col)
+    if kind == "cord":
+        return shaders.cord(name, col)
+    if kind == "hair":
+        return shaders.hair(name, col, tip=sh.get("tip", (0.06, 0.05, 0.045)))
+    if kind == "gourd":
+        return shaders.gourd(name, col)
+    raise ValueError(f"unknown shader {kind}")
+
+
+late = []
 for item in preset.get("outfit", []):
     kind = item["kind"]
+    name = item.get("name", kind)
     if kind == "loose_pants":
-        o, info = outfit.loose_pants(bod, arm, m, item)
-        util.set_material(o, shaders.fabric("fabric_" + o.name, shaders.rgb(item["color"]), knee_z=info["knee_z"], hem_z=info["hem_z"], stains=item.get("stains", 0.0)))
-        pieces.append(o)
+        o, info = outfit.loose_pants(bod, arm, m, item, name=name)
         pants = o
+        if item.get("hide", True):
+            hide_zones.append((max(info["knee_z"] + 0.07, info["hem_z"] + 0.06), info["waist_z"] - 0.06))
     elif kind == "belt":
-        o = outfit.belt(pants, arm, info, item)
-        util.set_material(o, shaders.belt("belt_" + o.name, shaders.rgb(item["color"]), edge=shaders.rgb(item.get("edge", (0.5, 0.48, 0.45)))))
-        pieces.append(o)
+        o = outfit.belt(pants, arm, info, item, name=name)
     elif kind == "wraps":
-        o = outfit.wraps(bod, arm, m, item, name=item.get("name", "wraps"))
-        util.set_material(o, shaders.tape("tape_" + o.name, shaders.rgb(item["color"]), band=item.get("band", 0.024), angle=item.get("angle", 0.55)))
-        pieces.append(o)
+        o = outfit.wraps(bod, arm, m, item, name=name)
+    elif kind == "tight":
+        o = outfit.tight(bod, arm, m, item, name=name)
+    elif kind == "loose_top":
+        o = outfit.loose_top(bod, arm, m, item, name=name)
+    elif kind == "waist_cord":
+        o = outfit.waist_cord(pants, info, item, name=name)
+    elif kind == "cape":
+        o = outfit.cape(bod, arm, m, item, name=name)
+    elif kind == "gourd":
+        o = outfit.gourd(bod, arm, m, item, name=name)
+    elif kind == "mhclo":
+        o = next(c for c in mhclo if c.name == name)
+        for mm in list(o.modifiers):
+            o.modifiers.remove(mm)
+    elif kind in ("headband", "ribbons"):
+        late.append(item)
+        continue
     else:
         raise ValueError(f"unknown outfit kind {kind}")
+    util.set_material(o, shader_for("g_" + name, item.get("shader", {"type": "fabric", "color": item.get("color", (0.5, 0.5, 0.5))}), info))
+    pieces.append(o)
 
 stage("mask")
 egg = mask.fit(bod, eyes, spec_mask.get("fit", {}))
@@ -98,17 +141,33 @@ mask_obj, centres = mask.build(egg, eyes, bod, spec_mask)
 hair_pieces = []
 if preset.get("hair"):
     h = preset["hair"]
-    shell, knot, tie = outfit.short_hair(bod, arm, m, egg, h)
-    hm = shaders.hair("hair_mat", shaders.rgb(h["color"]), tip=h.get("tip", (0.06, 0.05, 0.045)))
-    for o in (shell, knot):
-        util.set_material(o, hm)
-    util.set_material(tie, shaders.cord("tie_mat", shaders.rgb(h.get("tie", (0.85, 0.82, 0.76)))))
-    hair_pieces = [shell, knot, tie]
+    if h.get("shell", True):
+        shell, knot, tie = outfit.short_hair(bod, arm, m, egg, h)
+        util.set_material(shell, shader_for("g_hair", {"type": "hair", "color": h["color"], "tip": h.get("tip", (0.06, 0.05, 0.045))}, info))
+        hair_pieces = [shell]
+        if knot is not None:
+            util.set_material(knot, bpy.data.materials["g_hair"])
+            util.set_material(tie, shader_for("g_tie", {"type": "cord", "color": h.get("tie", (0.85, 0.82, 0.76))}, info))
+            hair_pieces += [knot, tie]
 eye_y = 0.5 * (centres["eye_l"][1] + centres["eye_r"][1])
 eye_th = float(np.interp(eye_y, egg.M, egg.th_t))
 strap = outfit.strap([*(hair_pieces[:1]), bod], egg, eye_th + 0.05)
-util.set_material(strap, shaders.leather("leather_mat", shaders.rgb(spec_mask.get("strap", (0.16, 0.10, 0.07)))))
+util.set_material(strap, shader_for("g_strap", {"type": "leather", "color": spec_mask.get("strap", (0.16, 0.10, 0.07))}, info))
 pieces += hair_pieces + [strap]
+ribbon_objs = []
+for item in late:
+    name = item.get("name", item["kind"])
+    if item["kind"] == "headband":
+        o = outfit.headband([mask_obj, *(hair_pieces[:1]), bod], egg, item, name=name)
+        util.set_material(o, shader_for("g_" + name, item.get("shader", {"type": "cord", "color": (0.8, 0.8, 0.8)}), info))
+        pieces.append(o)
+    elif item["kind"] == "ribbons":
+        objs = outfit.ribbons(egg, item["colors"], item, name=name)
+        for k, o in enumerate(objs):
+            util.set_material(o, shader_for(f"g_{name}_{k}", {"type": "satin", "color": item["colors"][k], "rough": 0.4}, info))
+            util.set_single_weight(o, "head")
+        ribbon_objs = objs
+        pieces += objs
 
 stage("body low")
 hi = body.high_copy(bod, levels=1 if FAST else 2)
@@ -117,10 +176,10 @@ body.decimate(bod, preset.get("body_tris", 18000))
 full = util.duplicate(bod, "body_full")
 full.hide_render = True
 # Faces the trousers hide for good (thighs and hips) go: fewer triangles, nothing to poke through.
-if info:
+for z0, z1 in hide_zones:
     P = util.positions(bod)
     armw = util.weights_matrix(bod, outfit.sided(outfit.ARM_BONES)).sum(axis=1)
-    hidden = (P[:, 2] > info["knee_z"] + 0.07) & (P[:, 2] < info["waist_z"] - 0.06) & (armw < 0.05)
+    hidden = (P[:, 2] > z0) & (P[:, 2] < z1) & (armw < 0.05)
     util.delete_faces(bod, util.faces_of_vertices(bod, hidden))
 util.limit_and_normalize(bod)
 for g in list(bod.vertex_groups):

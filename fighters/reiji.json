@@ -46,36 +46,50 @@
  "outfit": [
   {
    "kind": "loose_pants",
-   "color": [
-    0.88,
-    0.87,
-    0.83
-   ],
+   "name": "gi_pants",
    "waist": 0.575,
    "hem": 0.085,
    "loose": 1.0,
-   "stains": 0.4
+   "shader": {
+    "type": "fabric",
+    "color": [
+     0.88,
+     0.87,
+     0.83
+    ],
+    "stains": 0.4
+   }
   },
   {
    "kind": "belt",
-   "color": [
-    0.025,
-    0.024,
-    0.024
-   ],
-   "edge": [
-    0.16,
-    0.155,
-    0.15
-   ]
+   "name": "belt",
+   "shader": {
+    "type": "belt",
+    "color": [
+     0.025,
+     0.024,
+     0.024
+    ],
+    "edge": [
+     0.16,
+     0.155,
+     0.15
+    ]
+   }
   },
   {
    "kind": "wraps",
-   "color": [
-    0.66,
-    0.07,
-    0.05
-   ]
+   "name": "wraps",
+   "shader": {
+    "type": "tape",
+    "color": [
+     0.66,
+     0.07,
+     0.05
+    ]
+   },
+   "knuckles": 1.0,
+   "fingers": 0.05
   }
  ],
  "hair": {

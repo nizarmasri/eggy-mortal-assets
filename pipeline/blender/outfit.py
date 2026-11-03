@@ -367,7 +367,12 @@ def wraps(body, arm, m, spec, name="wraps"):
         axis /= np.linalg.norm(axis)
         along = (P - wrist) @ axis  # metres past the wrist (towards the fingers)
         near_wrist = (along > -length) & (along < 0.02)
-        score = W[:, 0] + W[:, 2:6].sum(axis=1) * spec.get("knuckles", 1.0) + W[:, 6] * 0.6 + W[:, 1] * near_wrist
+        # Knuckles: only close to the base of each finger, so the fingers themselves stay bare.
+        kn = np.zeros(len(P), dtype=bool)
+        for f in ("index", "middle", "ring", "pinky"):
+            kh = np.array(m.get(f"{f}_01_{s}", m[f"hand_{s}_tail"]))
+            kn |= np.linalg.norm(P - kh, axis=1) < spec.get("knuckle_r", 0.016)
+        score = W[:, 0] + W[:, 2:6].sum(axis=1) * kn * spec.get("knuckles", 1.0) + W[:, 6] * 0.6 + W[:, 1] * near_wrist
         far = W[:, 7:].sum(axis=1)
         inc = (score >= 0.5) & (far < spec.get("fingers", 0.3)) & (along > -length)
         vmask |= inc
@@ -464,11 +469,22 @@ def short_hair(body, arm, m, egg, spec, name="hair"):
     util.set_positions(shell, S + shell_n * (t * taper)[:, None])
     util.shade_smooth(shell)
     util.set_single_weight(shell, "head")
-    # The knot: behind the top of the mask, at the crown's back.
+    if spec.get("no_knot"):
+        cen = np.array(egg.C) + np.array([0, 0.05, 0.05])
+
+        def plain(co, vi, fi):
+            d = co - cen
+            ang = unwrap_angle(np.arctan2(d[:, 0], -d[:, 2]))
+            return np.stack([ang * 0.05, np.linalg.norm(d, axis=1), np.full(len(co), 0.2)], axis=1)
+        set_param(shell, plain)
+        log(f"{name}: shell {util.tri_count(shell)} tris")
+        return shell, None, None
+    # The knot: behind the top of the mask, at the crown's back (or low at the nape: a bun).
     S = util.positions(body)[ids]
     back = S[S[:, 1] > egg.C[1] + 0.035]
-    top = back[np.argmax(back[:, 2] + 0.35 * back[:, 1])]
-    up = Vector((0, 0.55, 0.85)).normalized()
+    lift = {"crown": 0.35, "nape": -2.5, "top": 0.05}[spec.get("knot_at", "crown")]
+    top = back[np.argmax(back[:, 2] + lift * back[:, 1])] if spec.get("knot_at", "crown") != "nape" else back[np.argmax(back[:, 1] - 0.6 * np.abs(back[:, 2] - (egg.C[2] - 0.02)))]
+    up = Vector(spec.get("knot_dir", (0, 0.55, 0.85))).normalized()
     knot_c = Vector(top) + up * spec.get("knot_lift", 0.016)
     bm = bmesh.new()
     bmesh.ops.create_uvsphere(bm, u_segments=12, v_segments=8, radius=1.0)

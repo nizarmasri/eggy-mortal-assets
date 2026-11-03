@@ -211,7 +211,7 @@ def body_maps(low, high, size, outdir, tint=(1, 1, 1), hide=(), detail=None, hai
         if ds:
             S = _load_array(ds, size)[..., 0]
             S = (S - S.mean()) / max(S.std(), 1e-3)
-            G = np.clip(G - 0.07 * S, 0.25, 0.8)
+            G = np.clip(G - 0.05 * S, 0.4, 0.8)
             log("roughness from", os.path.basename(ds))
     if scalp_mask is not None:
         m = np.clip(scalp_mask * 1.25, 0, 1) ** 1.5
@@ -227,12 +227,58 @@ def body_maps(low, high, size, outdir, tint=(1, 1, 1), hide=(), detail=None, hai
     return albedo, orm, nrm
 
 
-def gear_maps(gear, size, outdir, hide=()):
+def _emit_bake(obj, size, name, shader_for_slot):
+    """Bake an emission per material slot into a float image (pattern coordinates, piece ids)."""
+    saved = [s.material for s in obj.material_slots]
+    temps = []
+    for i, slot in enumerate(obj.material_slots):
+        m = util.new_material(f"_tmp_{name}_{i}")
+        g = shaders.G(m)
+        em = g.n("ShaderNodeEmission")
+        out = g.n("ShaderNodeOutputMaterial")
+        shader_for_slot(g, em, i)
+        g.link(em.outputs[0], out.inputs[0])
+        slot.material = m
+        temps.append(m)
+    img = util.new_image(name, size, non_color=True, float_buffer=True)
+    cycles(samples=1)
+    bake(obj, img, 'EMIT')
+    remove_targets(obj)
+    for slot, m in zip(obj.material_slots, saved):
+        slot.material = m
+    for m in temps:
+        bpy.data.materials.remove(m)
+    return util.image_array(img)
+
+
+def gear_maps(gear, size, outdir, hide=(), pattern=None):
     cycles(samples=8)
     col = util.new_image("gear_albedo", size)
     bake(gear, col, 'DIFFUSE', pass_filter={'COLOR'})
     rgh = util.new_image("gear_rough", size, non_color=True)
     bake(gear, rgh, 'ROUGHNESS')
+    if pattern is not None:
+        # Pattern coordinates and piece ids per texel, then the fighter's own paint over the bake.
+        names = [s.material.name for s in gear.material_slots]
+
+        def param_shader(g, em, i):
+            p = g.attr("param")
+            v = g.vmath('MULTIPLY_ADD', p, (0.25, 0.25, 0.25))
+            node = v.node
+            node.inputs[2].default_value = (0.5, 0.5, 0.5)
+            g.link(v, em.inputs[0])
+
+        def id_shader(g, em, i):
+            em.inputs[0].default_value = ((i + 0.5) / 64, 0, 0, 1)
+        prm = (_emit_bake(gear, size, "gear_param", param_shader)[..., :3] - 0.5) * 4
+        sid = _emit_bake(gear, size, "gear_ids", id_shader)
+        slot = np.floor(sid[..., 0] * 64).astype(int)
+        covered = sid[..., 3] > 0.5 if sid.shape[-1] == 4 else np.ones(slot.shape, dtype=bool)
+        A = util.srgb_to_linear(util.image_array(col)[..., :3])
+        Rg = util.image_array(rgh)[..., 0].copy()
+        A, Rg = pattern(names, slot, prm, A, Rg)
+        util.set_image_array(col, util.linear_to_srgb(A))
+        util.set_image_array(rgh, np.repeat(Rg[..., None], 3, axis=-1))
     nrm = util.new_image("gear_normal", size, non_color=True)
     bake(gear, nrm, 'NORMAL')
     for o in hide:

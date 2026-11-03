@@ -76,6 +76,13 @@ def build(preset):
     assert rig is not None and rig.type == 'ARMATURE', "game_engine rig missing"
     log("human built:", basemesh.name, len(basemesh.data.vertices), "verts;", len(rig.data.bones), "bones")
     eyes = mp.ObjectService.find_object_of_type_amongst_nearest_relatives(basemesh, "Eyes")
+    # MakeHuman garments that suit (fitted, rigged and given a delete group on the body by MPFB).
+    for item in preset.get("mhclo", []):
+        path = mp.AssetService.find_asset_absolute_path(item["file"], "clothes")
+        assert path, f"MHCLO not found: {item['file']}"
+        clo = mp.HumanService.add_mhclo_asset(path, basemesh, asset_type="Clothes", subdiv_levels=0, material_type="GAMEENGINE")
+        clo["mortal_name"] = item["name"]
+        log("mhclo:", item["file"], len(clo.data.vertices), "verts")
 
     root = mp.ExportService.create_character_copy(basemesh)
     copies = [c for c in root.children]
@@ -98,6 +105,17 @@ def build(preset):
             if m.type != 'ARMATURE':
                 util.apply_modifier(eyes_copy, m.name)
 
+    clothes = []
+    for c in copies:
+        if c.get("mortal_name"):
+            util.select_only(c)
+            if c.data.shape_keys:
+                bpy.ops.object.shape_key_remove(all=True, apply_mix=True)
+            for mm in list(c.modifiers):
+                if mm.type != 'ARMATURE':
+                    util.apply_modifier(c, mm.name)
+            c.name = c.data.name = c["mortal_name"]
+            clothes.append(c)
     # Drop the originals so nothing else in the scene carries the same rig.
     util.delete(*[c for c in rig.children], rig)
     root.name = "Armature"
@@ -111,7 +129,7 @@ def build(preset):
                 if m.type == 'ARMATURE':
                     m.object = root
     log("export copy:", len(body.data.vertices), "body verts,", util.tri_count(body), "tris")
-    return root, body, eyes_copy
+    return root, body, eyes_copy, clothes
 
 
 def normalise_rolls(arm, ref_axes):
@@ -147,7 +165,8 @@ def measurements(arm, body):
     }
     names = ["pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "head"]
     for s in ("l", "r"):
-        names += [f"{n}_{s}" for n in ("thigh", "calf", "foot", "ball", "clavicle", "upperarm", "lowerarm", "hand")]
+        names += [f"{n}_{s}" for n in ("thigh", "calf", "foot", "ball", "clavicle", "upperarm", "lowerarm", "hand",
+                                        "index_01", "middle_01", "ring_01", "pinky_01", "thumb_01")]
     for n in names:
         m[n] = tuple(bone_world(arm, n))
         m[n + "_tail"] = tuple(bone_world(arm, n, "tail"))

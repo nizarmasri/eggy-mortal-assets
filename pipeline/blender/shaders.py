@@ -256,6 +256,31 @@ def cord(name, color):
     return mat
 
 
+def satin(name, color, rough=0.32):
+    """Shiny fight-shorts satin (or lycra): soft folds, a fine weave, low roughness."""
+    mat = util.new_material(name)
+    g = G(mat)
+    co = g.coords("Object")
+    x, y, z = g.sep(co)
+    folds = g.noise(g.comb(x, y, g.math('MULTIPLY', z, 0.35)), 30.0, 3.0, 0.5)
+    weave = g.noise(co, 1200.0, 1.0, 0.3)
+    height = g.math('ADD', folds, g.math('MULTIPLY', weave, 0.03))
+    g.principled(color, g.math('ADD', rough, g.math('MULTIPLY', folds, 0.1)), height, strength=0.5, distance=0.003)
+    return mat
+
+
+def gourd(name, color):
+    """A dried calabash: lacquered, streaked lengthwise, darker at the neck."""
+    mat = util.new_material(name)
+    g = G(mat)
+    p = g.attr("param")
+    u, v, w = g.sep(p)
+    streak = g.noise(g.comb(g.math('MULTIPLY', v, 40.0), g.math('MULTIPLY', u, 1.5), w), 4.0, 4.0, 0.6)
+    col = g.mix(g.math('MULTIPLY', streak, 0.5), color, (0.12, 0.05, 0.02, 1))
+    g.principled(col, g.math('ADD', 0.28, g.math('MULTIPLY', streak, 0.2)), streak, strength=0.2, distance=0.001)
+    return mat
+
+
 def image_material(name, albedo, orm=None, normal=None, metallic_from_b=False, subsurface=0.0, double_sided=False):
     """The surface as exported: base colour, ORM (G roughness, B metalness when metallic_from_b) and a
     tangent-space normal map. glTF's exporter reads this; the previews render it."""

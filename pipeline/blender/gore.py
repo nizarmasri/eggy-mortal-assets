@@ -394,9 +394,9 @@ def skeleton(arm, body, egg, mat):
             side = (b - a).cross(Vector((0, 0, 1))).normalized() * off
             sk.add(_rod(sk.bm, a + side, b + side, 0.0065, knob=1.6), f"lowerarm_{s}")
         for f in ("index", "middle", "ring", "pinky", "thumb"):
-            sk.add(_rod(sk.bm, head(f"hand_{s}"), head(f"{f}_01_{s}"), 0.004, sides=5, knob=1.4, segs=1), f"hand_{s}")
+            sk.add(_rod(sk.bm, head(f"hand_{s}"), head(f"{f}_01_{s}"), 0.004, sides=4, knob=1.4, segs=0), f"hand_{s}")
             for k in (1, 2, 3):
-                sk.add(_rod(sk.bm, head(f"{f}_0{k}_{s}"), tail(f"{f}_0{k}_{s}"), 0.0035, sides=5, knob=1.3, segs=0), f"{f}_0{k}_{s}")
+                sk.add(_rod(sk.bm, head(f"{f}_0{k}_{s}"), tail(f"{f}_0{k}_{s}"), 0.0035, sides=4, knob=1.3, segs=0), f"{f}_0{k}_{s}")
         sk.add(_rod(sk.bm, head(f"thigh_{s}"), tail(f"thigh_{s}"), 0.014, knob=1.9, segs=3), f"thigh_{s}")
         a, b = head(f"calf_{s}"), tail(f"calf_{s}")
         sk.add(_rod(sk.bm, a, b, 0.012, knob=1.8, segs=3), f"calf_{s}")
@@ -412,7 +412,7 @@ def skeleton(arm, body, egg, mat):
         n = max(2, int((b - a).length / 0.028))
         for k in range(n):
             c = a.lerp(b, (k + 0.5) / n) + Vector((0, 0.035 if bn != "neck_01" else 0.015, 0))
-            sk.add(_blob(sk.bm, c, (0.017, 0.014, 0.009), segs=(8, 4)), bn)
+            sk.add(_blob(sk.bm, c, (0.017, 0.014, 0.009), segs=(6, 4)), bn)
     # Ribs: arcs following the chest wall, inset from the skin.
     rib_bones = []
     z0, z1 = head("spine_02").z, tail("spine_03").z - 0.04
@@ -421,15 +421,15 @@ def skeleton(arm, body, egg, mat):
         bone = "spine_03" if i < 5 else "spine_02"
         for s in (1, -1):
             pts = []
-            for k in range(9):
-                ang = math.radians(10 + 160 * k / 8)  # from the back round to the front
+            for k in range(7):
+                ang = math.radians(10 + 160 * k / 6)  # from the back round to the front
                 d = Vector((s * math.sin(ang), math.cos(ang), 0))
                 c = Vector((0, head("spine_02").y, z - 0.03 * math.sin(ang)))
                 hit = tree.ray_cast(c + d * 0.4, -d, 0.5)
                 p = hit[0] - d * 0.022 if hit[0] is not None else c + d * 0.12
                 pts.append(p)
             for a, b in zip(pts[:-1], pts[1:]):
-                sk.add(_rod(sk.bm, a, b, 0.0045, sides=5, knob=1.0, segs=0), bone)
+                sk.add(_rod(sk.bm, a, b, 0.0045, sides=4, knob=1.0, segs=0), bone)
             rib_bones.append((i, s, pts, bone))
     # Sternum and pelvis.
     front = [p[-1] for (i, s, p, b) in rib_bones if s == 1]
@@ -491,7 +491,7 @@ def skeleton(arm, body, egg, mat):
         def ribs(bm, sel=sel):
             for (_, _, pts, _) in sel:
                 for a, b in zip(pts[:-1], pts[1:]):
-                    _rod(bm, a, b, 0.0045, sides=5, knob=1.0, segs=0)
+                    _rod(bm, a, b, 0.0045, sides=4, knob=1.0, segs=0)
             return list(bm.verts)
         piece(f"bone_frac_ribs_{k}", sel[0][3] if sel else "spine_03", ribs)
     # Spine in three: lumbar (spine_01), thoracic (spine_02/03), cervical (neck).
@@ -502,7 +502,7 @@ def skeleton(arm, body, egg, mat):
                 n = max(2, int((b - a).length / 0.028))
                 for j in range(n):
                     c = a.lerp(b, (j + 0.5) / n) + Vector((0, 0.035 if bn != "neck_01" else 0.015, 0))
-                    _blob(bm, c, (0.017, 0.014, 0.009), segs=(8, 4))
+                    _blob(bm, c, (0.017, 0.014, 0.009), segs=(6, 4))
             return list(bm.verts)
         piece(f"bone_frac_spine_{k}", bones[-1], spine)
     # Forearms and shins snap mid-shaft: two halves each.

@@ -90,7 +90,7 @@ def reset(arm):
 STANCES = {
     # Karate kamae: left foot forward, bladed, lead fist out at chest height, rear fist chambered at the chin.
     "karate": dict(drop=0.06, blade=-30, lean=7, counter=12, feet=((0.15, -0.27), (-0.13, 0.21)),
-                   lead=(0.03, -0.33, -0.2), rear=(-0.07, -0.17, -0.2), head_tilt=6, knee_out=0.35),
+                   lead=(0.03, -0.33, -0.2), rear=(-0.07, -0.17, -0.2), head_tilt=4, knee_out=0.35),
     # A boxer's guard: both fists high, chin down, weight forward.
     "boxing": dict(drop=0.05, blade=-22, lean=10, counter=10, feet=((0.13, -0.18), (-0.14, 0.18)),
                    lead=(0.05, -0.27, 0.02), rear=(-0.08, -0.16, 0.04), head_tilt=12, knee_out=0.3),
@@ -133,7 +133,28 @@ def stance(arm, m, name="karate"):
         fore = (head(arm, f"hand_{side}") - head(arm, f"lowerarm_{side}")).normalized()
         aim(arm, f"hand_{side}", (fore + Vector((0, -0.9, 0))).normalized())
         fist(arm, side)
-    # Head level and facing the opponent, chin down a touch.
+    # Head facing the opponent, chin down a touch: turn the neck part way, then aim the face.
     rotate(arm, "neck_01", (0, 0, 1), -(s["blade"] + s["counter"]) * 0.6)
-    rotate(arm, "head", (0, 0, 1), -(s["blade"] + s["counter"]) * 0.4)
-    rotate(arm, "head", (1, 0, 0), s["head_tilt"])
+    look(arm, "head", Vector((0, -1, -math.tan(math.radians(s["head_tilt"])))))
+
+
+def look(arm, name, direction):
+    """Turn a bone about its head so its rest-pose forward (-Y) points along direction, keeping it upright."""
+    pb = _pb(arm, name)
+    rest = pb.bone.matrix_local.to_3x3()
+    pose_m = pb.matrix.to_3x3()
+    fwd = (pose_m @ rest.inverted() @ Vector((0, -1, 0))).normalized()
+    q = fwd.rotation_difference(Vector(direction).normalized())
+    c = pb.matrix.translation.copy()
+    pb.matrix = Matrix.Translation(c) @ q.to_matrix().to_4x4() @ Matrix.Translation(-c) @ pb.matrix
+    _update()
+    # Remove any roll: the head's rest up (+Z) should stay as close to world up as the aim allows.
+    pose_m = pb.matrix.to_3x3()
+    up = (pose_m @ rest.inverted() @ Vector((0, 0, 1))).normalized()
+    fwd = (pose_m @ rest.inverted() @ Vector((0, -1, 0))).normalized()
+    want = (Vector((0, 0, 1)) - fwd * fwd.z).normalized()
+    ang = up.angle(want)
+    if ang > 1e-3:
+        axis = up.cross(want).normalized()
+        sign = 1 if axis.dot(fwd) > 0 else -1
+        rotate(arm, name, tuple(fwd), math.degrees(ang) * sign)
