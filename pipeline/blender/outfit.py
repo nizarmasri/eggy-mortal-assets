@@ -41,6 +41,64 @@ def set_param(obj, fn, name="param"):
     attr.data.foreach_set("vector", out.reshape(-1))
 
 
+def level_top(obj, reach=0.12, name="param"):
+    """Bands measured down from a piece's top edge (waistbands, cuffs) should follow that edge, not a
+    horizontal plane: near the top boundary loop, the pattern height (y) is shifted so the edge reads level,
+    fading out over `reach` metres below it."""
+    me = obj.data
+    attr = me.attributes.get(name)
+    if attr is None:
+        return
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    adj = {}
+    for e in bm.edges:
+        if e.is_boundary:
+            a, b = e.verts[0].index, e.verts[1].index
+            adj.setdefault(a, []).append(b)
+            adj.setdefault(b, []).append(a)
+    bm.free()
+    if not adj:
+        return
+    P = util.positions(obj)
+    seen, loops = set(), []
+    for v0 in adj:
+        if v0 in seen:
+            continue
+        comp, stack = [], [v0]
+        seen.add(v0)
+        while stack:
+            v = stack.pop()
+            comp.append(v)
+            for w in adj[v]:
+                if w not in seen:
+                    seen.add(w)
+                    stack.append(w)
+        loops.append(np.array(comp))
+    loops = [lp for lp in loops if len(lp) >= 8]
+    if not loops:
+        return
+    top = max(loops, key=lambda lp: P[lp, 2].mean())
+    T = P[top]
+    cx, cy = T[:, 0].mean(), T[:, 1].mean()
+    at = np.arctan2(T[:, 1] - cy, T[:, 0] - cx)
+    order = np.argsort(at)
+    at, zt = at[order], T[order, 2]
+    at = np.concatenate([at - 2 * np.pi, at, at + 2 * np.pi])
+    zt = np.concatenate([zt, zt, zt])
+    av = np.arctan2(P[:, 1] - cy, P[:, 0] - cx)
+    local = np.interp(av, at, zt)
+    below = local - P[:, 2]
+    shift = (T[:, 2].max() - local) * np.clip(1 - below / reach, 0, 1) * (below > -0.01)
+    lv = np.empty(len(me.loops), dtype=np.int64)
+    me.loops.foreach_get("vertex_index", lv)
+    vec = np.empty(len(me.loops) * 3)
+    attr.data.foreach_get("vector", vec)
+    vec = vec.reshape(-1, 3)
+    vec[:, 1] += shift[lv]
+    attr.data.foreach_set("vector", vec.reshape(-1))
+
+
 def unwrap_angle(a):
     """Angles of one face's corners made continuous (no jump across +-pi inside a face)."""
     ref = a[0]
@@ -222,6 +280,7 @@ def loose_pants(body, arm, m, spec, name="pants"):
     obj.data.update()
     util.shade_smooth(obj)
     set_param(obj, lambda co, vi, fi: lateral_param(co, legs, crotch))
+    level_top(obj)
     log(f"{name}: {util.tri_count(obj)} tris (crotch {crotch:.3f}, knee {knee_z:.3f}, hem {hem_z:.3f})")
     return obj, {"waist_z": waist_z, "hem_z": hem_z, "knee_z": knee_z, "crotch": crotch}
 
@@ -382,6 +441,7 @@ def wraps(body, arm, m, spec, name="wraps"):
     Pn = util.positions(obj) + util.normals(obj) * offset
     util.set_positions(obj, Pn)
     sol = obj.modifiers.new("Rim", 'SOLIDIFY')
+    sol.thickness_clamp = 1.0  # no spikes at sharp open corners
     sol.thickness = offset
     sol.offset = -1
     sol.use_rim_only = True
@@ -466,7 +526,10 @@ def short_hair(body, arm, m, egg, spec, name="hair"):
     shell_n = util.normals(shell)
     t = spec.get("thickness", 0.0035)
     taper = np.array([min(1.0, (ring.get(i, 9) + 0.15) / 2.5) for i in range(len(S))])
-    util.set_positions(shell, S + shell_n * (t * taper)[:, None])
+    # Clumps combed front to back: a lumpy, uneven surface instead of a smooth helmet.
+    clump = util.fbm3(S * np.array([70.0, 22.0, 70.0]), 3, seed=31)
+    t_v = t * (0.55 + 0.9 * clump) * taper
+    util.set_positions(shell, S + shell_n * t_v[:, None])
     util.shade_smooth(shell)
     util.set_single_weight(shell, "head")
     if spec.get("no_knot"):
@@ -607,6 +670,8 @@ def tight(body, arm, m, spec, name):
     vm = select_region(body, m, spec)
     faces = util.faces_of_vertices(body, vm)
     obj = util.extract_faces(body, faces, name)
+    util.smooth_boundary(obj, spec.get("edge_smooth", 12))
+    util.decimate_to(obj, spec.get("tris", 2400))
     off = spec.get("offset", 0.0018)
     P = util.positions(obj)
     N = util.normals(obj)
@@ -620,6 +685,7 @@ def tight(body, arm, m, spec, name):
         sm.iterations = spec["smooth"]
         util.apply_modifier(obj, sm.name)
     sol = obj.modifiers.new("Rim", 'SOLIDIFY')
+    sol.thickness_clamp = 1.0  # no spikes at sharp open corners
     sol.thickness = off
     sol.offset = -1
     sol.use_rim_only = True
@@ -650,6 +716,7 @@ def tight(body, arm, m, spec, name):
     else:
         legs = {1: np.array([m["thigh_l"], m["calf_l"], m["foot_l"]]), -1: np.array([m["thigh_r"], m["calf_r"], m["foot_r"]])}
         set_param(obj, lambda co, vi, fi: lateral_param(co, legs, crotch_height(body)))
+        level_top(obj)
     log(f"{name}: {util.tri_count(obj)} tris")
     return obj
 
@@ -685,6 +752,8 @@ def loose_top(body, arm, m, spec, name="top"):
         vm &= ~((np.abs(P[:, 0]) < spec["open"]) & front & (P[:, 2] > spec.get("hem", 0.5) * H))
     faces = util.faces_of_vertices(body, vm)
     obj = util.extract_faces(body, faces, name)
+    util.smooth_boundary(obj, spec.get("edge_smooth", 16))
+    util.decimate_to(obj, spec.get("tris", 2000))
     P = util.positions(obj)
     N = util.normals(obj)
     ease = spec.get("ease", 0.012)
@@ -700,6 +769,7 @@ def loose_top(body, arm, m, spec, name="top"):
     f = (util.fbm3(P * np.array([10, 10, 3.0]), 3, seed=17) - 0.5) * spec.get("folds", 0.012)
     util.set_positions(obj, P + N * f[:, None])
     sol = obj.modifiers.new("Thick", 'SOLIDIFY')
+    sol.thickness_clamp = 1.0  # no spikes at sharp open corners
     sol.thickness = spec.get("thickness", 0.003)
     sol.offset = 1
     sol.use_rim_only = False
@@ -826,77 +896,114 @@ def set_chain(obj, along, across, strip=None):
 
 
 def cape(body, arm, m, spec, name="cape"):
-    """A short cape from the shoulders down the back: a curved sheet clear of the back, weighted to
-    spine_03 and the clavicles at the collar; the renderer swings the rest with a spring chain."""
-    tree = bvh(body)
+    """A short cape hanging from the shoulders down the back: a sheet a little clear of the back, cast onto
+    the torso alone (never the arms, so it never sticks out like wings once the arms move), narrower at the
+    collar than at the hem. Weighted to spine_03 and the clavicles at the collar (from the torso), to spine_03
+    below; the renderer swings it with a spring chain (_CHAIN, _CHAINU)."""
+    # The torso alone: the body without its arms, for casting and for the collar weights.
+    armw = util.weights_matrix(body, sided(ARM_BONES[1:]) + ["head"]).sum(axis=1)
+    torso = util.extract_faces(body, util.faces_of_vertices(body, armw < 0.25), name + "_torso")
+    tree = bvh(torso)
     H = m["height"]
-    top_z = m["neck_01"][2] - 0.02
+    top_z = m["neck_01"][2] - 0.015
     length = spec.get("length", 0.45) * H / 1.78
-    half_w = spec.get("width", 0.25)
-    rows, cols = 10, 12
+    w0 = spec.get("width", 0.2) * H / 1.78
+    w1 = spec.get("bottom_width", w0 * 1.35) * H / 1.78
+    back_y = m["spine_03"][1]
+    rows, cols = 12, 12
     grid = []
+    prev = None
     for r in range(rows + 1):
         t = r / rows
         z = top_z - length * t
+        half = w0 + (w1 - w0) * t
         row = []
         for c in range(cols + 1):
             u = c / cols * 2 - 1
-            ang = u * math.radians(80 + 25 * t)
-            d = Vector((math.sin(ang), math.cos(ang), 0))
-            o = Vector((0, m["spine_03"][1], z)) + d * 0.5
-            hit = tree.ray_cast(o, -d, 0.6)
-            base = hit[0] if hit[0] is not None else Vector((0, m["spine_03"][1], z)) + d * 0.15
-            p = base + d * (0.012 + 0.05 * t * t) + Vector((0, 0.03 * t, 0))
-            row.append(p)
+            x = u * half
+            o = Vector((x * 0.85, back_y + 0.5, z))
+            hit = tree.ray_cast(o, Vector((0, -1, 0)), 0.8)
+            y = hit[0].y if hit[0] is not None else back_y + 0.12
+            # Over the shoulders the collar wraps forward a little; lower down it hangs straight.
+            y += 0.012 + 0.03 * t * t
+            if prev is not None:
+                y = max(y, prev[c].y - 0.02)  # hangs, never tucks back in under the shoulder blades
+            row.append(Vector((x * (0.85 + 0.15 * t), y, z)))
         grid.append(row)
+        prev = row
     bm = bmesh.new()
     V = [[bm.verts.new(p) for p in row] for row in grid]
     for r in range(rows):
         for c in range(cols):
-            bm.faces.new((V[r][c], V[r][c + 1], V[r + 1][c + 1], V[r + 1][c]))
+            bm.faces.new((V[r][c], V[r + 1][c], V[r + 1][c + 1], V[r][c + 1]))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     obj = util.bmesh_object(name, bm)
     sol = obj.modifiers.new("Thick", 'SOLIDIFY')
+    sol.thickness_clamp = 1.0  # no spikes at sharp open corners
     sol.thickness = 0.004
     sol.offset = 0
     util.apply_modifier(obj, sol.name)
     util.shade_smooth(obj)
     P = util.positions(obj)
     along = np.clip((top_z - P[:, 2]) / length, 0, 1)
-    across = np.clip(P[:, 0] / half_w, -1, 1)
+    across = np.clip(P[:, 0] / w1, -1, 1)
     set_chain(obj, along, across)
-    util.transfer_weights(obj, body)
-    _reweight(obj, np.where(along > 0.15)[0], "spine_03")
+    util.transfer_weights(obj, torso)
+    _reweight(obj, np.where(along > 0.12)[0], "spine_03")
+    util.delete(torso)
     set_param(obj, lambda co, vi, fi: np.stack([co[:, 0], co[:, 2], np.zeros(len(co))], axis=1))
+    log(f"{name}: {util.tri_count(obj)} tris")
     return obj
 
 
-def ribbons(egg, colours, spec, name="ribbons"):
-    """Fitas: thin ribbons tied at the back of the mask's strap, hanging and fanning out down the back."""
+def ribbons(egg, colours, spec, name="ribbons", surfaces=()):
+    """Fitas: thin ribbons tied at the back of the mask's strap, hanging down the back of the head and the
+    neck and fanning out over the shoulder blades, always a little clear of the hair and skin."""
     C = Vector(egg.C.tolist())
+    trees = [bvh(sf) for sf in surfaces]
     n = len(colours)
     objs = []
+
+    def back_of(x, z, fallback):
+        """The furthest-back surface point at (x, z), cast from behind."""
+        best = None
+        for t in trees:
+            hit = t.ray_cast(Vector((x, C.y + 0.6, z)), Vector((0, -1, 0)), 1.0)
+            if hit[0] is not None and (best is None or hit[0].y > best):
+                best = hit[0].y
+        return fallback if best is None else best
+
+    knot_z = C.z + 0.01
     for i in range(n):
         u = (i - (n - 1) / 2) / max(n - 1, 1)
-        start = C + Vector((u * 0.03, egg.b * 0.55 + 0.02, -0.01))
         L = spec.get("length", 0.42) * (0.85 + 0.3 * ((i * 37) % 7) / 7)
-        w = spec.get("width", 0.012)
+        w = spec.get("width", 0.014)
         bm = bmesh.new()
-        segs = 10
+        segs = 14
         rows = []
+        y_prev = None
         for sgi in range(segs + 1):
             t = sgi / segs
-            c = start + Vector((u * 0.12 * t, 0.05 * t + 0.02 * math.sin(t * 3 + i), -L * t))
-            side = Vector((1, 0, 0)) * (w / 2)
+            x = u * (0.02 + 0.13 * t) + 0.01 * math.sin(t * 5 + i * 1.7)
+            z = knot_z - L * t
+            y = back_of(x, z, C.y + egg.b * 0.9) + 0.008 + 0.004 * i / max(n - 1, 1)
+            if y_prev is not None:
+                y = max(y, y_prev - 0.015)  # hang off the back of the head, don't wrap under the skull
+            y_prev = y
+            c = Vector((x, y, z))
+            twist = 0.6 * math.sin(t * 4 + i)
+            side = Vector((math.cos(twist), math.sin(twist) * 0.3, 0)).normalized() * (w / 2)
             rows.append((bm.verts.new(c - side), bm.verts.new(c + side)))
-        for a, b in zip(rows[:-1], rows[1:]):
-            bm.faces.new((a[0], a[1], b[1], b[0]))
+        for a_, b_ in zip(rows[:-1], rows[1:]):
+            bm.faces.new((a_[0], a_[1], b_[1], b_[0]))
         o = util.bmesh_object(f"{name}_{i}", bm)
         sol = o.modifiers.new("Thick", 'SOLIDIFY')
+        sol.thickness_clamp = 1.0  # no spikes at sharp open corners
         sol.thickness = 0.0012
         util.apply_modifier(o, sol.name)
+        util.shade_smooth(o)
         P = util.positions(o)
-        set_chain(o, np.clip((start.z - P[:, 2]) / L, 0, 1), np.clip((P[:, 0] - start.x) / (w / 2), -1, 1), np.full(len(P), i))
+        set_chain(o, np.clip((knot_z - P[:, 2]) / L, 0, 1), np.clip((P[:, 0] - P[:, 0].mean()) / (w / 2), -1, 1), np.full(len(P), i))
         set_param(o, lambda co, vi, fi, i=i: np.stack([co[:, 2] * 10, np.zeros(len(co)), np.full(len(co), i / max(n, 1))], axis=1))
         o["colour_index"] = i
         objs.append(o)

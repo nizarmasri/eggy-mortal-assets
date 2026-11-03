@@ -25,6 +25,9 @@ def _paint(A, R, m, colour, rough=None):
     return A, R
 
 
+GOLD = (0.86, 0.58, 0.1)
+
+
 def _stitch(v, period, width=0.12):
     """Dashes along a line coordinate."""
     return (np.mod(v / period, 1.0) < 0.55).astype(float)
@@ -41,23 +44,22 @@ def elyema(names, slot, prm, A, R, ctx):
             top = knee + 0.06 + (0.10 + 0.16 * f) * (0.55 + 0.45 * np.cos(z * np.pi * 2.6))
             gold = on & (x > 0.15) & (y < top)
             trim = on & (x > 0.12) & (y >= top) & (y < top + 0.009)
-            band = on & (y > waist - 0.06)
-            A, R = _paint(A, R, gold | band, (0.95, 0.70, 0.18), 0.3)
+            band = on & (y > (y[on].max() if on.any() else waist) - 0.05)
+            A, R = _paint(A, R, gold | band, GOLD, 0.3)
             A, R = _paint(A, R, trim, (0.95, 0.93, 0.88), 0.35)
         elif n == "g_boots":
-            lace_zone = on & (z > 0.72)
-            cross = (np.abs(np.mod((y * 40 + x * 6), 1.0) - 0.5) < 0.12) | (np.abs(np.mod((y * 40 - x * 6), 1.0) - 0.5) < 0.12)
-            side = on & (x > 0.55)
-            A, R = _paint(A, R, side, (0.62, 0.04, 0.07), 0.35)
-            A, R = _paint(A, R, lace_zone & cross, (0.9, 0.88, 0.84), 0.6)
-            A, R = _paint(A, R, on & (y < 0.025), (0.08, 0.07, 0.07), 0.7)
+            # Crimson wrestling boots: a gold cuff and side stripe, a black sole.
+            top = y[on].max() if on.any() else 0.5
+            A, R = _paint(A, R, on & (y > top - 0.035), GOLD, 0.3)
+            A, R = _paint(A, R, on & (x > 0.82) & (y > 0.03), GOLD, 0.3)
+            A, R = _paint(A, R, on & (y < 0.022), (0.05, 0.045, 0.045), 0.7)
         elif n == "g_cape":
             xm = np.abs(x[on]).max() if on.any() else 0.3
             ym = y[on].min() if on.any() else 0.9
             trim = on & ((np.abs(x) > xm - 0.028) | (y < ym + 0.028))
-            A, R = _paint(A, R, trim, (0.95, 0.70, 0.18), 0.3)
+            A, R = _paint(A, R, trim, GOLD, 0.3)
             star = on & (np.hypot(x, y - (y[on].max() - 0.13 if on.any() else 1.2)) < 0.05)
-            A, R = _paint(A, R, star, (0.95, 0.70, 0.18), 0.3)
+            A, R = _paint(A, R, star, GOLD, 0.3)
     return A, R
 
 
@@ -73,9 +75,10 @@ def duke(names, slot, prm, A, R, ctx):
             A, R = _paint(A, R, on & (y > top - 0.045) & (y < top - 0.03), (0.0, 0.42, 0.2), 0.35)
             A, R = _paint(A, R, stripe & ~band, (0.95, 0.94, 0.9), 0.35)
         elif n == "g_boots":
-            lace_zone = on & (z > 0.75)
-            cross = (np.abs(np.mod((y * 45 + x * 5), 1.0) - 0.5) < 0.1) | (np.abs(np.mod((y * 45 - x * 5), 1.0) - 0.5) < 0.1)
-            A, R = _paint(A, R, lace_zone & cross, (0.92, 0.9, 0.86), 0.6)
+            # Black boxing boots: a white cuff with a green line, a white sole.
+            top = y[on].max() if on.any() else 0.5
+            A, R = _paint(A, R, on & (y > top - 0.03), (0.92, 0.9, 0.86), 0.45)
+            A, R = _paint(A, R, on & (np.abs(y - (top - 0.015)) < 0.004), (0.0, 0.42, 0.2), 0.45)
             A, R = _paint(A, R, on & (y < 0.022), (0.85, 0.83, 0.8), 0.7)
     return A, R
 

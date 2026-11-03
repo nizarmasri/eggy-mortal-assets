@@ -130,9 +130,11 @@ for item in preset.get("outfit", []):
         o = next(c for c in mhclo if c.name == name)
         for mm in list(o.modifiers):
             o.modifiers.remove(mm)
+        util.decimate_to(o, item.get("tris", 1800))
         legs = {1: np.array([m["thigh_l"], m["calf_l"], m["foot_l"]]), -1: np.array([m["thigh_r"], m["calf_r"], m["foot_r"]])}
         crotch = outfit.crotch_height(bod)
         outfit.set_param(o, lambda co, vi, fi: outfit.lateral_param(co, legs, crotch))
+        outfit.level_top(o)
         if item.get("waist"):
             info = {**info, "waist_z": item["waist"] * m["height"]}
     elif kind in ("headband", "ribbons"):
@@ -171,10 +173,22 @@ for item in late:
         util.set_material(o, shader_for("g_" + name, item.get("shader", {"type": "cord", "color": (0.8, 0.8, 0.8)}), info))
         pieces.append(o)
     elif item["kind"] == "ribbons":
-        objs = outfit.ribbons(egg, item["colors"], item, name=name)
+        objs = outfit.ribbons(egg, item["colors"], item, name=name, surfaces=[*(hair_pieces[:1]), bod])
         for k, o in enumerate(objs):
             util.set_material(o, shader_for(f"g_{name}_{k}", {"type": "satin", "color": item["colors"][k], "rough": 0.4}, info))
-            util.set_single_weight(o, "head")
+            # The knot rides on the head; further down the ribbon follows the neck, then the upper back, so
+            # at rest it drapes with the body even before the renderer's chain takes over.
+            a = np.empty(len(o.data.vertices), dtype=np.float32)
+            o.data.attributes["_CHAIN"].data.foreach_get("value", a)
+            for g in list(o.vertex_groups):
+                o.vertex_groups.remove(g)
+            wh = np.clip(1 - (a - 0.08) / 0.2, 0, 1)
+            ws = np.clip((a - 0.3) / 0.3, 0, 1)
+            wn = np.clip(1 - wh - ws, 0, 1)
+            for gname, wv in (("head", wh), ("neck_01", wn), ("spine_03", ws)):
+                vg = o.vertex_groups.new(name=gname)
+                for vi in np.nonzero(wv > 1e-3)[0]:
+                    vg.add([int(vi)], float(wv[vi]), 'REPLACE')
         ribbon_objs = objs
         pieces += objs
 
@@ -221,6 +235,36 @@ body_albedo, body_orm, body_nrm = bake.body_maps(bod, hi, size_body, TEX, tint=p
 stage("bake gear")
 gear_albedo, gear_orm, gear_nrm = bake.gear_maps(gear, size_gear, TEX, hide=[hi], pattern=patterns.for_fighter(FID, dict(info)))
 
+# Pieces the renderer moves on their own (the cape and ribbons on a spring chain, the gourd) leave the gear
+# mesh after the bake, keeping the atlas.
+SEPARATE = {"cape": "cape", "gourd": "gourd"}
+separate_objs = []
+groups = {}
+for i, slot in enumerate(gear.material_slots):
+    nm = slot.material.name[2:] if slot.material.name.startswith("g_") else slot.material.name
+    base = nm.rsplit("_", 1)[0] if nm.startswith("fitas_") else nm
+    if base in SEPARATE or base == "fitas":
+        groups.setdefault(base, []).append(i)
+for base, slots_ in groups.items():
+    mi = np.empty(len(gear.data.polygons), dtype=np.int64)
+    gear.data.polygons.foreach_get("material_index", mi)
+    sel = np.isin(mi, slots_)
+    o = util.extract_faces(gear, sel, base)
+    util.delete_faces(gear, sel)
+    util.add_armature(o, arm)
+    separate_objs.append(o)
+    log(f"separate piece {base}: {util.tri_count(o)} tris")
+# Chain attributes only where they mean something.
+for o in (gear, *separate_objs):
+    for an in ("_CHAIN", "_CHAINU", "_STRIP"):
+        a = o.data.attributes.get(an)
+        if a is None:
+            continue
+        v = np.empty(len(o.data.vertices), dtype=np.float32)
+        a.data.foreach_get("value", v)
+        if o is gear or not v.any():
+            o.data.attributes.remove(a)
+
 stage("mask textures")
 cv = mask.canvas(egg, size_mask)
 seed_pts, seed_xy = mask.seeds(egg, spec_mask.get("shards", 30), seed=spec_mask.get("seed", 1))
@@ -237,9 +281,10 @@ stage("final materials")
 skin = shaders.image_material("skin", body_albedo, body_orm, body_nrm, subsurface=0.05)
 util.set_material(bod, skin)
 gear_mat = shaders.image_material("gear", gear_albedo, gear_orm, gear_nrm, double_sided=True)
-gear.data.materials.clear()
-gear.data.materials.append(gear_mat)
-gear.data.polygons.foreach_set("material_index", [0] * len(gear.data.polygons))
+for o in (gear, *separate_objs):
+    o.data.materials.clear()
+    o.data.materials.append(gear_mat)
+    o.data.polygons.foreach_set("material_index", [0] * len(o.data.polygons))
 mask_mat = shaders.image_material("mask", mask_albedo, mask_orm, mask_nrm, metallic_from_b=True)
 util.set_material(mask_obj, mask_mat)
 eye_src = bake.source_diffuse(eyes)
@@ -270,7 +315,7 @@ shards = mask.fracture(mask_obj, seed_pts, egg)
 shards = mask.finish_shards(shards, egg, arm, mask_mat)
 log("shards:", len(shards))
 
-for o in (bod, eyes, teeth, gear, mask_obj):
+for o in (bod, eyes, teeth, gear, mask_obj, *separate_objs):
     export.tidy(o)
 for o in shards:
     export.tidy(o)
@@ -280,11 +325,12 @@ for o in gore_objs:
 stats = {
     "id": FID,
     "height_m": round(m["height"], 4),
-    "triangles": {o.name: util.tri_count(o) for o in (bod, eyes, teeth, gear, mask_obj)},
+    "triangles": {o.name: util.tri_count(o) for o in (bod, eyes, teeth, gear, mask_obj, *separate_objs)},
     "shards": len(shards),
     "gore_triangles": {"skeleton": util.tri_count(skel), "bone_pieces": sum(util.tri_count(o) for o in bone_pieces), "caps": sum(util.tri_count(o) for o in caps)},
     "shard_triangles": sum(util.tri_count(o) for o in shards),
     "textures": {img.name: list(img.size) for img in (body_albedo, body_orm, body_nrm, gear_albedo, gear_orm, gear_nrm, mask_albedo, mask_orm, mask_nrm, eye_img)},
+    "credits": body.CREDITS,
     "egg": {"C": egg.C.round(4).tolist(), "a": round(egg.a, 4), "b": round(egg.b, 4), "h": round(egg.h, 4), "phimax_deg": round(math.degrees(egg.phimax), 2)},
 }
 log("stats", json.dumps(stats))
@@ -300,7 +346,7 @@ stage("export")
 util.delete(hi)
 raw = os.path.join(OUT, "raw", f"{FID}.glb")
 export.bones_sidecar(arm, os.path.join(OUT, f"{FID}.bones.json"))
-export.glb(arm, [bod, eyes, teeth, gear, mask_obj, *shards, *gore_objs], raw)
+export.glb(arm, [bod, eyes, teeth, gear, mask_obj, *separate_objs, *shards, *gore_objs], raw)
 stats["raw_bytes"] = os.path.getsize(raw)
 with open(os.path.join(OUT, f"{FID}.stats.json"), "w") as f:
     json.dump(stats, f, indent=1)

@@ -65,6 +65,23 @@ def reference_axes(reference_preset):
     return axes
 
 
+CREDITS = []
+
+
+def mhclo_credit(path, file):
+    """The header lines of an MHCLO that credit it (name, author, licence, homepage)."""
+    out = {"file": file}
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            k, _, v = line.strip().partition(" ")
+            if k in ("name", "author", "license", "licence", "homepage", "uuid") and k not in out:
+                out[k] = v.strip()
+            if k == "verts":
+                break
+    log("credit:", out)
+    return out
+
+
 def build(preset):
     """The MPFB human, then its export copy with shape keys and helpers baked away.
 
@@ -83,6 +100,7 @@ def build(preset):
         clo = mp.HumanService.add_mhclo_asset(path, basemesh, asset_type="Clothes", subdiv_levels=0, material_type="GAMEENGINE")
         clo["mortal_name"] = item["name"]
         log("mhclo:", item["file"], len(clo.data.vertices), "verts")
+        CREDITS.append(mhclo_credit(path, item["file"]))
 
     root = mp.ExportService.create_character_copy(basemesh)
     copies = [c for c in root.children]

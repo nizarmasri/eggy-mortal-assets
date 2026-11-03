@@ -47,8 +47,20 @@ def tail(arm, name):
     return (pb.matrix @ Matrix.Translation((0, pb.bone.length, 0))).translation.copy()
 
 
-def two_bone(arm, upper, lower, end, target, pole):
-    """Place `end`'s head (the wrist or ankle) at target, the middle joint towards pole."""
+def two_bone(arm, upper, lower, end, target, pole, passes=3):
+    """Place `end`'s head (the wrist or ankle) at target, the middle joint towards pole. Solved again from
+    where the joints ended up until the end is within 5 mm (or the target is out of reach)."""
+    for _ in range(passes):
+        _two_bone(arm, upper, lower, end, target, pole)
+        err = (head(arm, end) - Vector(target)).length
+        if err < 0.005:
+            break
+    if err > 0.01:
+        util.log(f"IK {upper}: {err * 100:.1f} cm from the target")
+    return err
+
+
+def _two_bone(arm, upper, lower, end, target, pole):
     S = head(arm, upper)
     L1 = (head(arm, lower) - S).length
     L2 = (head(arm, end) - head(arm, lower)).length
@@ -93,7 +105,7 @@ STANCES = {
                    lead=(0.03, -0.33, -0.2), rear=(-0.07, -0.17, -0.2), head_tilt=4, knee_out=0.35),
     # A boxer's guard: both fists high, chin down, weight forward.
     "boxing": dict(drop=0.05, blade=-22, lean=10, counter=10, feet=((0.13, -0.18), (-0.14, 0.18)),
-                   lead=(0.05, -0.27, 0.02), rear=(-0.08, -0.16, 0.04), head_tilt=12, knee_out=0.3),
+                   lead=(0.05, -0.27, 0.0), rear=(-0.07, -0.19, -0.075), head_tilt=12, knee_out=0.3),
     # Sambo: low and wide, open hands reaching for a grip.
     "sambo": dict(drop=0.09, blade=-20, lean=14, counter=8, feet=((0.18, -0.2), (-0.17, 0.18)),
                   lead=(0.0, -0.36, -0.2), rear=(-0.09, -0.25, -0.24), head_tilt=6, knee_out=0.4, curl=0.35),
@@ -111,7 +123,7 @@ STANCES = {
                     lead=(0.02, -0.2, 0.05), rear=(-0.16, 0.02, -0.55), head_tilt=-4, knee_out=0.35, curl=0.6),
     # Muay thai: tall, square, hands high and open-ish.
     "muaythai": dict(drop=0.03, blade=-12, lean=2, counter=6, feet=((0.13, -0.15), (-0.14, 0.14)),
-                     lead=(0.08, -0.28, 0.06), rear=(-0.09, -0.2, 0.06), head_tilt=6, knee_out=0.2),
+                     lead=(0.08, -0.28, 0.03), rear=(-0.08, -0.2, -0.05), head_tilt=6, knee_out=0.2),
 }
 
 
@@ -139,7 +151,8 @@ def stance(arm, m, name="karate"):
         two_bone(arm, f"thigh_{side}", f"calf_{side}", f"foot_{side}", target, pole)
         # Keep the foot flat and pointing roughly forward.
         aim(arm, f"foot_{side}", Vector((0.2 * (1 if side == "l" else -1), -1.0, -0.55)))
-    # Fists: lead in front of the lead shoulder, rear by the chin.
+    # Fists: lead in front of the lead shoulder, rear relative to the head joint (the top of the neck: the
+    # wrist goes below it, the fist rises about 10 cm above the wrist).
     neck = head(arm, "head")
     for side, off in (("l", s["lead"]), ("r", s["rear"])):
         sh = head(arm, f"upperarm_{side}")

@@ -147,7 +147,9 @@ def all_shots(arm, m, outdir, stance_name, fighter_id, hidden=()):
     util.object_mode()
     bpy.context.view_layer.update()
     _light("g_key", 'AREA', (-2.6, -2.4, 3.2), Vector((-0.55, 0, 1.0)), (1.0, 0.72, 0.42), 1100, 1.4)
-    _light("g_rim", 'AREA', (0.6, 2.6, 2.4), Vector((-0.55, 0, 1.2)), (0.55, 0.72, 1.0), 1300, 1.0)
+    # The rim sits straight behind the fighter (as the camera sees it) and high, so it outlines the
+    # silhouette instead of washing over the chest of a fighter turned towards the opponent.
+    _light("g_rim", 'AREA', (-0.75, 2.8, 2.7), Vector((-0.55, 0, 1.25)), (0.55, 0.72, 1.0), 800, 1.0)
     _light("g_fill", 'AREA', (1.5, -3.0, 1.2), Vector((-0.55, 0, 1.0)), (0.75, 0.8, 0.95), 90, 3.0)
     _world((0.006, 0.0065, 0.008))
     cam = _camera("cam_game", (0, -3.5, 1.3), (0, 0, 1.0), vfov=35)

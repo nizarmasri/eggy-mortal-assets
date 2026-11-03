@@ -233,6 +233,49 @@ def delete_faces(obj, face_mask):
     obj.data.update()
 
 
+def smooth_boundary(obj, iterations=12, lam=0.5, mu=-0.53):
+    """Straighten the open edges (a garment's neckline, sleeve ends, hems): the zigzag a face selection leaves
+    is smoothed along each boundary loop with Taubin's shrink-free filter; interior vertices stay put."""
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    bm.verts.ensure_lookup_table()
+    nbrs = {}
+    for e in bm.edges:
+        if e.is_boundary:
+            a, b = e.verts[0].index, e.verts[1].index
+            nbrs.setdefault(a, []).append(b)
+            nbrs.setdefault(b, []).append(a)
+    bm.free()
+    ids = np.array([i for i, n in nbrs.items() if len(n) == 2], dtype=np.int64)
+    if not len(ids):
+        return 0
+    nb = np.array([nbrs[i] for i in ids], dtype=np.int64)
+    P = positions(obj)
+    for _ in range(iterations):
+        for f in (lam, mu):
+            avg = 0.5 * (P[nb[:, 0]] + P[nb[:, 1]])
+            P[ids] = P[ids] + f * (avg - P[ids])
+    set_positions(obj, P)
+    return len(ids)
+
+
+def decimate_to(obj, target_tris, symmetric=True):
+    """Collapse-decimate a mesh (no other modifiers on it) to about target_tris; vertex groups follow."""
+    tris = tri_count(obj)
+    if tris <= target_tris:
+        return tris
+    mod = obj.modifiers.new("Decimate", 'DECIMATE')
+    mod.decimate_type = 'COLLAPSE'
+    mod.ratio = target_tris / tris
+    mod.use_symmetry = symmetric
+    mod.symmetry_axis = 'X'
+    mod.use_collapse_triangulate = True
+    apply_modifier(obj, mod.name)
+    out = tri_count(obj)
+    log(f"decimated {obj.name}: {tris} -> {out} tris")
+    return out
+
+
 def faces_of_vertices(obj, vmask, mode="all"):
     """Face mask: faces whose vertices are all (or any) in vmask."""
     out = np.zeros(len(obj.data.polygons), dtype=bool)
