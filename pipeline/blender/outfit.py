@@ -663,7 +663,9 @@ def hood(body, arm, m, egg, spec, name="hood"):
     above = (P - A) @ n
     region = (above > -0.03) & (arm_w < 0.5) & (P[:, 2] > nb[2] - 0.12) & (W[:, :3].sum(axis=1) > 0.2)
     sd, r, phi, th = _mask_side(egg, P)
-    deep = (sd > overlap) & (r < 1.02)
+    # The face opening: only what the shell covers from the front. Below the mouth the shell narrows to its
+    # tip, so the chin's underside and the throat stay in the hood (seen from below they would show skin).
+    deep = (sd > overlap) & (r < 1.02) & (th < 0.8 * math.pi)
     obj = util.extract_faces(body, util.faces_of_vertices(body, region & ~deep), name)
     util.cut_plane(obj, A, n, keep_below=False)
     util.decimate_to(obj, spec.get("tris", 2600))
@@ -707,7 +709,8 @@ def hood(body, arm, m, egg, spec, name="hood"):
     limit = 1 - (egg_mask.THICK + 0.003) / min(egg.a, egg.b)
     past = np.clip((np.abs(phi) - egg.phimax) / math.radians(10), 0, 1)
     rmax = limit + past * past * 2.0
-    clamp = (r > rmax) & (th > 0.02) & (th < math.pi - 0.02)
+    # Only what is at or inside the shell is held in: past the shell's lower rim the hood carries on outside.
+    clamp = (r > rmax) & (r < 1.06) & (th > 0.02) & (th < math.pi - 0.02)
     if clamp.any():
         q = egg.to_local(Q[clamp])
         f = (rmax[clamp] / r[clamp])[:, None]
