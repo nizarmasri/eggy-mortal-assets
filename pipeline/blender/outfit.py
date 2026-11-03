@@ -654,7 +654,7 @@ def hood(body, arm, m, egg, spec, name="hood"):
     neckv = W[:, 1] > 0.5
     y_front, y_back = float(P[neckv, 1].min()), float(P[neckv, 1].max())
     A = np.array([0.0, y_back, nb[2] + spec.get("back", 0.0)])
-    B = np.array([0.0, y_front, min(m["clavicle_l"][2], m["clavicle_r"][2]) + spec.get("front", 0.012)])
+    B = np.array([0.0, y_front, min(m["clavicle_l"][2], m["clavicle_r"][2]) + spec.get("front", 0.03)])
     v = B - A
     n = np.array([0.0, v[2], -v[1]])
     n = n / np.linalg.norm(n)
@@ -667,15 +667,41 @@ def hood(body, arm, m, egg, spec, name="hood"):
     obj = util.extract_faces(body, util.faces_of_vertices(body, region & ~deep), name)
     util.cut_plane(obj, A, n, keep_below=False)
     util.decimate_to(obj, spec.get("tris", 2600))
-    # Off the skin, then smooth: a stretched hood does not follow the ear's folds or the skull's bumps.
+    # Off the skin, then smooth: a stretched hood does not follow the skull's bumps or the neck's folds.
     Q = util.positions(obj)
     E = util.edges(obj)
-    ears = util.weights_matrix(obj, ["ears"])[:, 0] > 0.2
-    soft = np.where(util.grow(ears, E, 3), 1.0, spec.get("calm", 0.35))
-    soft[boundary_verts(obj)] = 0.0  # the edges are straightened along themselves, below
-    Q = util.taubin(Q + util.normals(obj) * off, E, spec.get("smooth", 18), weight=soft)
-    tree = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
+    rim = boundary_verts(obj)
+    soft = np.full(len(Q), spec.get("calm", 0.55))
+    soft[rim] = 0.0  # the edges are straightened along themselves, below
+    Q = util.taubin(Q + util.normals(obj) * off, E, spec.get("smooth", 22), weight=soft)
+    # Over the ears it lies flat: a membrane across each ear (fixed on the scalp round it), lifted to follow
+    # the skull's curve. The body's ears are removed under it (fighter.py).
+    ears = util.grow(util.weights_matrix(obj, ["mortal_ears"])[:, 0] > 0.5, E, 1)
+    ears[rim] = False
+    if ears.any():
+        cnt = np.zeros(len(Q))
+        np.add.at(cnt, E[:, 0], 1)
+        np.add.at(cnt, E[:, 1], 1)
+        cnt = np.maximum(cnt, 1)[:, None]
+        centre = np.array([0.0, float(egg.C[1]) + 0.03 * k, float(egg.C[2]) + 0.02 * k])
+        rad = np.linalg.norm(Q - centre, axis=1)
+        for _ in range(300):
+            acc = np.zeros_like(Q)
+            np.add.at(acc, E[:, 0], Q[E[:, 1]])
+            np.add.at(acc, E[:, 1], Q[E[:, 0]])
+            Q[ears] = (acc / cnt)[ears]
+            ra = np.zeros(len(Q))
+            np.add.at(ra, E[:, 0], rad[E[:, 1]])
+            np.add.at(ra, E[:, 1], rad[E[:, 0]])
+            rad[ears] = (ra / cnt[:, 0])[ears]
+        dirs = Q[ears] - centre
+        Q[ears] = centre + dirs / np.linalg.norm(dirs, axis=1, keepdims=True) * rad[ears][:, None]
+    ear_body = util.weights_matrix(body, ["mortal_ears"])[:, 0] >= 0.5
+    skin = util.extract_faces(body, ~util.faces_of_vertices(body, ear_body), name + "_skin")
+    tree = BVHTree.FromObject(skin, bpy.context.evaluated_depsgraph_get())
     Q, moved = util.push_out(Q, tree, off * 0.75)
+    util.delete(skin)
+    log(f"{name}: {int(ears.sum())} vertices laid flat over the ears")
     # Under the mask (and a few degrees past its edge) the hood stays inside the shell.
     sd, r, phi, th = _mask_side(egg, Q)
     limit = 1 - (egg_mask.THICK + 0.003) / min(egg.a, egg.b)
@@ -718,11 +744,13 @@ def hood(body, arm, m, egg, spec, name="hood"):
     # edge that wants a trim (behind the mask's edge, or above the collar line).
     yc = float(egg.C[1])
     d_plane = (Q - A) @ n
+    # Behind the mask's edge: how far behind it (the gold frame); elsewhere no trim from the mask.
+    trim_mask = np.where(np.abs(phi) > egg.phimax, -sd, 1.0)
 
     def param(co, vi, fi):
         # Across the back, x is the plain lateral offset (the laces are placed in it); elsewhere nothing reads it.
         x = np.where(co[:, 1] > yc, co[:, 0], np.sign(co[:, 0]) * 0.5)
-        return np.stack([x, co[:, 2], np.minimum(-sd[vi], d_plane[vi])], axis=1)
+        return np.stack([x, co[:, 2], np.minimum(trim_mask[vi], d_plane[vi])], axis=1)
     set_param(obj, param)
     # Laces up the back: a slit from the nape to the back of the skull, crossed in an X between eyelets.
     hood_tree = BVHTree.FromObject(obj, bpy.context.evaluated_depsgraph_get())
@@ -1182,7 +1210,9 @@ def cape(body, arm, m, spec, name="cape"):
     z_hem = 0.5 * (m["calf_l"][2] + m["calf_r"][2]) + spec.get("hem_above_knee", 0.03) * k
     gap = spec.get("gap", 0.01) * k
     rows, cols = spec.get("rows", 22), spec.get("cols", 30)
-    A_c, A_s, A_h = (math.radians(spec.get(key, dflt)) for key, dflt in (("collar_angle", 90), ("shoulder_angle", 64), ("hem_angle", 75)))
+    A_c, A_s, A_h = (math.radians(spec.get(key, dflt)) for key, dflt in (("collar_angle", 72), ("shoulder_angle", 56), ("hem_angle", 72)))
+    hug = spec.get("hug", 0.3)  # how fast (metres in per metre down) it may come back in towards the body
+    z_seat = crotch_height(body) + 0.05
     flare = spec.get("flare", 0.03) * k
     zs = np.append(np.arange(z_top, z_hem, -0.004), z_hem)
     tz = (z_top - zs) / (z_top - z_hem)
@@ -1197,15 +1227,21 @@ def cape(body, arm, m, spec, name="cape"):
             hit = tree.ray_cast(Vector((dx[j] * reach, y0 + dy[j] * reach, z)), Vector((-dx[j], -dy[j], 0)), reach)
             if hit[0] is not None:
                 rho[j] = reach - hit[3]
-        # Hang from the furthest point above (cloth never tucks back in under the shoulder blades or the seat).
-        env = np.maximum.accumulate(np.where(rho > 0, rho + gap, 0.0))
-        env = np.maximum(env, 0.06 * k) + flare * smoothstep(0.4, 1.0, tz)
+        # Hang from the furthest point above: below the shoulder blades it comes back in towards the small of
+        # the back only slowly (heavy cloth lying on the back), and below the seat not at all.
+        env = np.zeros(len(zs))
+        prev = 0.06 * k
+        for j in range(len(zs)):
+            give = hug * 0.004 if (rho[j] > 0 and zs[j] > z_seat) else 0.0
+            prev = max(rho[j] + gap if rho[j] > 0 else 0.0, prev - give)
+            env[j] = prev
+        env = env + flare * smoothstep(0.4, 1.0, tz)
         line = np.stack([dx * env, y0 + dy * env, zs], axis=1)
         s = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(line, axis=0), axis=1))])
         sr = np.linspace(0, s[-1], rows + 1)
         G[:, c] = np.stack([np.interp(sr, s, line[:, i]) for i in range(3)], axis=1)
     # Calm the column-to-column differences and the turn over the shoulders.
-    for _ in range(3):
+    for _ in range(5):
         G[:, 1:-1] += 0.5 * (0.5 * (G[:, :-2] + G[:, 2:]) - G[:, 1:-1])
         G[1:-1] += 0.3 * (0.5 * (G[:-2] + G[2:]) - G[1:-1])
     flat = G.reshape(-1, 3)
@@ -1221,7 +1257,7 @@ def cape(body, arm, m, spec, name="cape"):
     Nrm *= np.where((Nrm * radial).sum(axis=2, keepdims=True) < 0, -1.0, 1.0)
     T = np.repeat(np.linspace(0, 1, rows + 1)[:, None], cols + 1, axis=1)
     U = np.repeat(us[None, :], rows + 1, axis=0)
-    gathers = 0.007 * k * (1 - smoothstep(0.0, 0.3, T)) * np.sin(math.pi * spec.get("gathers", 9) * (U + 1))
+    gathers = 0.0045 * k * (1 - smoothstep(0.0, 0.22, T)) * np.sin(math.pi * spec.get("gathers", 9) * (U + 1))
     phase = math.pi * spec.get("folds", 6) * (U + 1) + 0.7 * np.sin(2.3 * U + 0.5) + 1.2 * T * np.sin(1.7 * U + 2.0)
     folds = k * (0.004 + 0.02 * smoothstep(0.12, 1.0, T)) * np.sin(phase)
     G = G + Nrm * (gathers + folds)[..., None]
