@@ -74,6 +74,29 @@ def closest_on_polyline(p, pts):
     return bp, bt, bs
 
 
+def lateral_param(co, legs, crotch):
+    """Pattern coordinates for legwear: x = how far round to the outer side (1 outer, -1 inner, about the leg
+    below the crotch and the body above it), y = height, z = how far round to the front (1 front, -1 back)."""
+    out = np.zeros((len(co), 3))
+    out[:, 1] = co[:, 2]
+    for sign, pts in legs.items():
+        sel = (co[:, 0] * sign) >= 0
+        q = co[sel]
+        axis_p, axis_t, _ = closest_on_polyline(q, pts)
+        r = q - axis_p
+        r[:, 2] = 0
+        r /= np.maximum(np.linalg.norm(r, axis=1, keepdims=True), 1e-6)
+        rb = q.copy()
+        rb[:, 2] = 0
+        rb[:, 1] -= np.median(co[:, 1])
+        rb /= np.maximum(np.linalg.norm(rb, axis=1, keepdims=True), 1e-6)
+        above = (q[:, 2] > crotch + 0.04)[:, None]
+        d = np.where(above, rb, r)
+        out[sel, 0] = d[:, 0] * sign
+        out[sel, 2] = -d[:, 1]
+    return out
+
+
 def crotch_height(body):
     P = util.positions(body)
     mid = (np.abs(P[:, 0]) < 0.012) & (P[:, 2] > 0.3 * P[:, 2].max()) & (P[:, 2] < 0.6 * P[:, 2].max())
@@ -121,6 +144,9 @@ def loose_pants(body, arm, m, spec, name="pants"):
         rmin = (0.072 * f_knee + 0.012 * f_hem + (0.082 * (1 - f_knee))) * k * loose
         newr = rl + ease
         newr = newr + np.maximum(0, rmin - newr) * 0.85
+        flare = spec.get("flare", 0.0)
+        if flare:
+            newr += flare * k * np.clip((crotch - z) / max(crotch - hem_z, 1e-3), 0, 1) ** 1.3
         leg_pos = axis_p + rd * newr[:, None]
         # Above the crotch the hips are inflated along their normals instead.
         hip_pos = q + N[side] * (0.010 + 0.012 * np.clip((waist_z - z) / max(waist_z - crotch, 1e-3), 0, 1))[:, None] * k * loose
@@ -195,7 +221,7 @@ def loose_pants(body, arm, m, spec, name="pants"):
     bm.free()
     obj.data.update()
     util.shade_smooth(obj)
-    set_param(obj, lambda co, vi, fi: co)
+    set_param(obj, lambda co, vi, fi: lateral_param(co, legs, crotch))
     log(f"{name}: {util.tri_count(obj)} tris (crotch {crotch:.3f}, knee {knee_z:.3f}, hem {hem_z:.3f})")
     return obj, {"waist_z": waist_z, "hem_z": hem_z, "knee_z": knee_z, "crotch": crotch}
 
@@ -527,4 +553,367 @@ def strap(surfaces, egg, th, name="strap", width=0.018, thick=0.0025):
         k = vi % 4
         return np.stack([row / (n_rows - 1) * 0.5, np.where((k == 0) | (k == 3), 1.0, 0.0), np.full(len(co), 0.4)], axis=1)
     set_param(obj, param)
+    return obj
+
+
+# ---------- tight gear chosen by region ----------
+
+def select_region(body, m, spec):
+    """Vertices in a region: bones (score of the listed bones' weights), optional limits along bones
+    ({bone: [f0, f1]}, f = fraction from head to tail), heights (fractions of the body height), and
+    excluded bones."""
+    P = util.positions(body)
+    H = m["height"]
+    bones = spec["bones"]
+    W = util.weights_matrix(body, bones)
+    vm = W.sum(axis=1) >= spec.get("min_weight", 0.5)
+    if spec.get("exclude"):
+        X = util.weights_matrix(body, spec["exclude"])
+        vm &= X.sum(axis=1) < spec.get("exclude_max", 0.3)
+    if "z" in spec:
+        z0, z1 = spec["z"]
+        vm &= (P[:, 2] >= z0 * H) & (P[:, 2] <= z1 * H)
+    for bone, (f0, f1) in spec.get("along", {}).items():
+        a, b = np.array(m[bone]), np.array(m[bone + "_tail"])
+        d = b - a
+        t = ((P - a) @ d) / (d @ d)
+        near = W[:, bones.index(bone)] > 0.2 if bone in bones else np.ones(len(P), dtype=bool)
+        vm &= ~near | ((t >= f0) & (t <= f1))
+    if spec.get("front_open"):
+        # An open front: drop a band down the middle of the chest and belly.
+        w = spec["front_open"]
+        vm &= ~((np.abs(P[:, 0]) < w) & (P[:, 1] < np.median(P[vm, 1]) if vm.any() else False))
+    return vm
+
+
+def tight(body, arm, m, spec, name):
+    """A layer just off the skin over a region (tights, crop tops, armbands, shin tape, boots, wrist wraps)."""
+    vm = select_region(body, m, spec)
+    faces = util.faces_of_vertices(body, vm)
+    obj = util.extract_faces(body, faces, name)
+    off = spec.get("offset", 0.0018)
+    P = util.positions(obj)
+    N = util.normals(obj)
+    extra = np.zeros(len(P))
+    if spec.get("sole"):
+        extra += spec["sole"] * (P[:, 2] < 0.012)
+    util.set_positions(obj, P + N * (off + extra)[:, None])
+    if spec.get("smooth"):
+        sm = obj.modifiers.new("Smooth", 'SMOOTH')
+        sm.factor = 0.5
+        sm.iterations = spec["smooth"]
+        util.apply_modifier(obj, sm.name)
+    sol = obj.modifiers.new("Rim", 'SOLIDIFY')
+    sol.thickness = off
+    sol.offset = -1
+    sol.use_rim_only = True
+    util.apply_modifier(obj, sol.name)
+    util.shade_smooth(obj)
+    axis_bone = spec.get("axis")
+    if axis_bone:
+        # Pattern coordinates round a bone (wraps, tape, bands): along it, round it, and which side.
+        def param(co, vi, fi):
+            out = np.zeros((len(co), 3))
+            for s in ("l", "r"):
+                b = axis_bone.replace("*", s)
+                if b not in m:
+                    continue
+                a, t = np.array(m[b]), np.array(m[b + "_tail"])
+                ax = (t - a) / np.linalg.norm(t - a)
+                sel = (co[:, 0] > 0) == (s == "l")
+                if not sel.any():
+                    continue
+                d = co[sel] - a
+                ref = np.cross(ax, [0, 0, 1.0]) if abs(ax[2]) < 0.9 else np.cross(ax, [0, 1.0, 0])
+                ref /= np.linalg.norm(ref)
+                ref2 = np.cross(ax, ref)
+                ang = unwrap_angle(np.arctan2(d @ ref2, d @ ref))
+                out[sel] = np.stack([d @ ax, ang * 0.045, np.full(sel.sum(), 0.5 if s == "l" else 0.8)], axis=1)
+            return out
+        set_param(obj, param)
+    else:
+        legs = {1: np.array([m["thigh_l"], m["calf_l"], m["foot_l"]]), -1: np.array([m["thigh_r"], m["calf_r"], m["foot_r"]])}
+        set_param(obj, lambda co, vi, fi: lateral_param(co, legs, crotch_height(body)))
+    log(f"{name}: {util.tri_count(obj)} tris")
+    return obj
+
+
+# ---------- loose tops ----------
+
+def loose_top(body, arm, m, spec, name="top"):
+    """A jacket, tunic or dobok top: the torso (and sleeves to a given length) eased off the body, a V or an
+    open front, a hem; weights kept from the body."""
+    H = m["height"]
+    region = {
+        "bones": ["pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "clavicle_l", "clavicle_r", "upperarm_l", "upperarm_r", "lowerarm_l", "lowerarm_r"],
+        "z": [spec.get("hem", 0.5), spec.get("neck", 0.83)],
+        "exclude": ["head", "hand_l", "hand_r", "thigh_l", "thigh_r"],
+        "along": {"upperarm_l": [-1, spec.get("sleeve", 1.0)], "upperarm_r": [-1, spec.get("sleeve", 1.0)],
+                  "lowerarm_l": [-1, spec.get("forearm", 0.0)], "lowerarm_r": [-1, spec.get("forearm", 0.0)]},
+    }
+    if spec.get("sleeve", 1.0) <= 0.0:
+        region["exclude"] += ["upperarm_l", "upperarm_r"]
+        region["exclude_max"] = 0.45
+    if spec.get("forearm", 0.0) <= 0.0:
+        region["exclude"] += ["lowerarm_l", "lowerarm_r"]
+    vm = select_region(body, m, region)
+    P = util.positions(body)
+    # A V neck or an open front: drop the faces in front of the chest inside the opening.
+    neck_z = m["neck_01"][2]
+    front = P[:, 1] < (m["spine_02"][1] - 0.04)
+    if spec.get("v_depth"):
+        vz = neck_z - spec["v_depth"]
+        inside = (P[:, 2] > vz) & (np.abs(P[:, 0]) < (P[:, 2] - vz) * spec.get("v_width", 0.55)) & front
+        vm &= ~inside
+    if spec.get("open"):
+        vm &= ~((np.abs(P[:, 0]) < spec["open"]) & front & (P[:, 2] > spec.get("hem", 0.5) * H))
+    faces = util.faces_of_vertices(body, vm)
+    obj = util.extract_faces(body, faces, name)
+    P = util.positions(obj)
+    N = util.normals(obj)
+    ease = spec.get("ease", 0.012)
+    zf = np.clip((neck_z - P[:, 2]) / 0.25, 0, 1)
+    util.set_positions(obj, P + N * (ease * (0.35 + 0.65 * zf))[:, None])
+    sm = obj.modifiers.new("Smooth", 'SMOOTH')
+    sm.factor = 0.6
+    sm.iterations = spec.get("smooth", 5)
+    util.apply_modifier(obj, sm.name)
+    # Folds, then thickness at the open edges.
+    P = util.positions(obj)
+    N = util.normals(obj)
+    f = (util.fbm3(P * np.array([10, 10, 3.0]), 3, seed=17) - 0.5) * spec.get("folds", 0.012)
+    util.set_positions(obj, P + N * f[:, None])
+    sol = obj.modifiers.new("Thick", 'SOLIDIFY')
+    sol.thickness = spec.get("thickness", 0.003)
+    sol.offset = 1
+    sol.use_rim_only = False
+    sol.use_even_offset = True
+    util.apply_modifier(obj, sol.name)
+    util.shade_smooth(obj)
+
+    def param(co, vi, fi):
+        out = np.zeros((len(co), 3))
+        out[:, 0] = co[:, 0]
+        out[:, 1] = co[:, 2]
+        out[:, 2] = -co[:, 1]
+        return out
+    set_param(obj, param)
+    log(f"{name}: {util.tri_count(obj)} tris")
+    return obj
+
+
+# ---------- cords, ropes, bands ----------
+
+def tube_along(points, radius, sides=6, name="cord", closed=False):
+    """A round tube along a polyline (cords, rope, a headband)."""
+    pts = [Vector(p) for p in points]
+    bm = bmesh.new()
+    rings = []
+    n = len(pts)
+    prev_x = None
+    for i, p in enumerate(pts):
+        t = (pts[(i + 1) % n] - pts[i - 1]) if closed else (pts[min(i + 1, n - 1)] - pts[max(i - 1, 0)])
+        t.normalize()
+        x = t.orthogonal().normalized() if prev_x is None else (prev_x - t * prev_x.dot(t)).normalized()
+        prev_x = x
+        y = t.cross(x)
+        rings.append([bm.verts.new(p + (x * math.cos(2 * math.pi * k / sides) + y * math.sin(2 * math.pi * k / sides)) * radius) for k in range(sides)])
+    for a, b in zip(rings, rings[1:] + ([rings[0]] if closed else [])):
+        for k in range(sides):
+            j = (k + 1) % sides
+            bm.faces.new((a[k], a[j], b[j], b[k]))
+    if not closed:
+        bm.faces.new(list(reversed(rings[0])))
+        bm.faces.new(rings[-1])
+    obj = util.bmesh_object(name, bm)
+    util.shade_smooth(obj)
+    total = len(rings)
+
+    def param(co, vi, fi):
+        ring = vi // sides
+        k = vi % sides
+        return np.stack([ring / max(total - 1, 1), k / sides, np.zeros(len(co))], axis=1)
+    set_param(obj, param)
+    return obj
+
+
+def waist_cord(pants, info, spec, name="cord"):
+    """A capoeira corda: two turns of cord round the waist over the trousers, knotted at the side, two ends hanging."""
+    tree = bvh(pants)
+    P = util.positions(pants)
+    zc = info["waist_z"] - 0.03
+    centre = P[np.abs(P[:, 2] - zc) < 0.03].mean(axis=0)
+    objs = []
+    for turn, dz in enumerate((0.0, -0.016)):
+        ring = ring_on(tree, centre, zc + dz, n=40, offset=0.007 + 0.006 * turn)
+        objs.append(tube_along(ring, spec.get("radius", 0.0055), name=f"{name}_{turn}", closed=True))
+    side = spec.get("knot_side", 1)
+    ring = ring_on(tree, centre, zc, n=40, offset=0.012)
+    k = max(range(len(ring)), key=lambda i: ring[i].x * side - abs(ring[i].y - centre[1]) * 0.5)
+    start = ring[k] + Vector((0, -0.01, 0))
+    for e, ang in enumerate((-0.12, 0.18)):
+        pts = [start + Vector((side * (0.02 + 0.03 * t * t) + ang * t * 0.1, -0.012, -0.30 * t * spec.get("tail", 1.0))) for t in np.linspace(0, 1, 10)]
+        objs.append(tube_along(pts, spec.get("radius", 0.0055), name=f"{name}_end{e}"))
+    obj = util.join(objs, name)
+    util.transfer_weights(obj, pants)
+    W = util.positions(obj)
+    _reweight(obj, np.where(W[:, 2] < zc - 0.03)[0], "pelvis")
+    return obj
+
+
+def headband(surfaces, egg, spec, name="mongkol"):
+    """A thick rope ring worn round the head over the mask's brow, the back a little higher, a tail behind."""
+    trees = [bvh(s) for s in surfaces]
+    C = Vector(egg.C.tolist())
+    from mathutils import Matrix
+    R = Matrix.Rotation(math.radians(spec.get("tilt", 14)), 3, 'X')
+    pts = []
+    centre = C + Vector((0, 0, spec.get("height", 0.055)))
+    for i in range(32):
+        a = 2 * math.pi * i / 32
+        d = (R @ Vector((math.sin(a), -math.cos(a), 0))).normalized()
+        o = centre + d * 0.35
+        best = None
+        for t in trees:
+            hit = t.ray_cast(o, -d, 0.4)
+            if hit[0] is not None and (best is None or (hit[0] - o).length < (best[0] - o).length):
+                best = hit
+        p = best[0] + d * (spec.get("radius", 0.011) + 0.002) if best is not None else centre + d * 0.11
+        pts.append(p)
+    ring = tube_along(pts, spec.get("radius", 0.011), sides=8, name=name, closed=True)
+    back = max(pts, key=lambda p: p.y)
+    tail_pts = [back + Vector((0, 0.012 + 0.025 * t, -0.17 * t)) for t in np.linspace(0, 1, 6)]
+    tail = tube_along(tail_pts, spec.get("radius", 0.011) * 0.75, sides=6, name=name + "_tail")
+    obj = util.join([ring, tail], name)
+    util.set_single_weight(obj, "head")
+    return obj
+
+
+def Matrix_rot_x(a):
+    from mathutils import Matrix
+    return Matrix.Rotation(a, 3, 'X')
+
+
+# ---------- chain-driven pieces: cape, ribbons ----------
+
+def set_chain(obj, along, across, strip=None):
+    """`_CHAIN` (0 where the piece is fixed, 1 at its free end) and `_CHAINU` (-1..1 across it), and an
+    optional `_STRIP` index: the renderer's spring chain bends each vertex by its chain position."""
+    me = obj.data
+    for name, vals in (("_CHAIN", along), ("_CHAINU", across), ("_STRIP", strip)):
+        if vals is None:
+            continue
+        if name in me.attributes:
+            me.attributes.remove(me.attributes[name])
+        a = me.attributes.new(name, 'FLOAT', 'POINT')
+        a.data.foreach_set("value", np.asarray(vals, dtype=np.float32))
+
+
+def cape(body, arm, m, spec, name="cape"):
+    """A short cape from the shoulders down the back: a curved sheet clear of the back, weighted to
+    spine_03 and the clavicles at the collar; the renderer swings the rest with a spring chain."""
+    tree = bvh(body)
+    H = m["height"]
+    top_z = m["neck_01"][2] - 0.02
+    length = spec.get("length", 0.45) * H / 1.78
+    half_w = spec.get("width", 0.25)
+    rows, cols = 10, 12
+    grid = []
+    for r in range(rows + 1):
+        t = r / rows
+        z = top_z - length * t
+        row = []
+        for c in range(cols + 1):
+            u = c / cols * 2 - 1
+            ang = u * math.radians(80 + 25 * t)
+            d = Vector((math.sin(ang), math.cos(ang), 0))
+            o = Vector((0, m["spine_03"][1], z)) + d * 0.5
+            hit = tree.ray_cast(o, -d, 0.6)
+            base = hit[0] if hit[0] is not None else Vector((0, m["spine_03"][1], z)) + d * 0.15
+            p = base + d * (0.012 + 0.05 * t * t) + Vector((0, 0.03 * t, 0))
+            row.append(p)
+        grid.append(row)
+    bm = bmesh.new()
+    V = [[bm.verts.new(p) for p in row] for row in grid]
+    for r in range(rows):
+        for c in range(cols):
+            bm.faces.new((V[r][c], V[r][c + 1], V[r + 1][c + 1], V[r + 1][c]))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    obj = util.bmesh_object(name, bm)
+    sol = obj.modifiers.new("Thick", 'SOLIDIFY')
+    sol.thickness = 0.004
+    sol.offset = 0
+    util.apply_modifier(obj, sol.name)
+    util.shade_smooth(obj)
+    P = util.positions(obj)
+    along = np.clip((top_z - P[:, 2]) / length, 0, 1)
+    across = np.clip(P[:, 0] / half_w, -1, 1)
+    set_chain(obj, along, across)
+    util.transfer_weights(obj, body)
+    _reweight(obj, np.where(along > 0.15)[0], "spine_03")
+    set_param(obj, lambda co, vi, fi: np.stack([co[:, 0], co[:, 2], np.zeros(len(co))], axis=1))
+    return obj
+
+
+def ribbons(egg, colours, spec, name="ribbons"):
+    """Fitas: thin ribbons tied at the back of the mask's strap, hanging and fanning out down the back."""
+    C = Vector(egg.C.tolist())
+    n = len(colours)
+    objs = []
+    for i in range(n):
+        u = (i - (n - 1) / 2) / max(n - 1, 1)
+        start = C + Vector((u * 0.03, egg.b * 0.55 + 0.02, -0.01))
+        L = spec.get("length", 0.42) * (0.85 + 0.3 * ((i * 37) % 7) / 7)
+        w = spec.get("width", 0.012)
+        bm = bmesh.new()
+        segs = 10
+        rows = []
+        for sgi in range(segs + 1):
+            t = sgi / segs
+            c = start + Vector((u * 0.12 * t, 0.05 * t + 0.02 * math.sin(t * 3 + i), -L * t))
+            side = Vector((1, 0, 0)) * (w / 2)
+            rows.append((bm.verts.new(c - side), bm.verts.new(c + side)))
+        for a, b in zip(rows[:-1], rows[1:]):
+            bm.faces.new((a[0], a[1], b[1], b[0]))
+        o = util.bmesh_object(f"{name}_{i}", bm)
+        sol = o.modifiers.new("Thick", 'SOLIDIFY')
+        sol.thickness = 0.0012
+        util.apply_modifier(o, sol.name)
+        P = util.positions(o)
+        set_chain(o, np.clip((start.z - P[:, 2]) / L, 0, 1), np.clip((P[:, 0] - start.x) / (w / 2), -1, 1), np.full(len(P), i))
+        set_param(o, lambda co, vi, fi, i=i: np.stack([co[:, 2] * 10, np.zeros(len(co)), np.full(len(co), i / max(n, 1))], axis=1))
+        o["colour_index"] = i
+        objs.append(o)
+    return objs
+
+
+def gourd(body, arm, m, spec, name="gourd"):
+    """A calabash wine gourd hanging from a cord at the hip: rigid, parented to the pelvis."""
+    side = spec.get("side", 1)
+    hip = Vector(m["thigh_l" if side > 0 else "thigh_r"])
+    tree = bvh(body)
+    o = hip + Vector((side * 0.3, 0.0, -0.02))
+    hit = tree.ray_cast(o, Vector((-side, 0, 0)), 0.4)
+    surf = hit[0] if hit[0] is not None else hip + Vector((side * 0.12, 0, 0))
+    centre = surf + Vector((side * 0.06, 0.02, -0.14))
+    bm = bmesh.new()
+    prof = [(0.0, 0.004), (0.02, 0.03), (0.05, 0.048), (0.08, 0.05), (0.11, 0.04), (0.13, 0.024), (0.15, 0.022),
+            (0.17, 0.03), (0.195, 0.033), (0.22, 0.026), (0.24, 0.014), (0.255, 0.011), (0.27, 0.011)]
+    sides = 12
+    rings = []
+    for z, r in prof:
+        rings.append([bm.verts.new(centre + Vector((math.cos(2 * math.pi * k / sides) * r, math.sin(2 * math.pi * k / sides) * r, z - 0.12))) for k in range(sides)])
+    for a, b in zip(rings[:-1], rings[1:]):
+        for k in range(sides):
+            j = (k + 1) % sides
+            bm.faces.new((a[k], a[j], b[j], b[k]))
+    bm.faces.new(list(reversed(rings[0])))
+    bm.faces.new(rings[-1])
+    g = util.bmesh_object(name, bm)
+    util.shade_smooth(g)
+    cord_pts = [centre + Vector((0, 0, 0.15)), centre.lerp(surf, 0.5) + Vector((0, 0, 0.12)), surf + Vector((0, 0, 0.05))]
+    c = tube_along(cord_pts, 0.003, name=name + "_cord")
+    obj = util.join([g, c], name)
+    set_param(obj, lambda co, vi, fi: np.stack([co[:, 2] * 5, np.arctan2(co[:, 1] - centre.y, co[:, 0] - centre.x) * 0.2, np.zeros(len(co))], axis=1))
+    util.set_single_weight(obj, "pelvis")
     return obj

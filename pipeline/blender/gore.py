@@ -266,6 +266,7 @@ def caps(full_body, arm, mat):
                     lp[uv].uv = (cc, ii / M)
             # Face the open side: + bone direction on the stump, - on the severed piece.
             bm.normal_update()
+            bm.faces.ensure_lookup_table()
             if bm.faces[0].normal.dot(n) * sgn < 0:
                 bmesh.ops.reverse_faces(bm, faces=bm.faces)
             obj = util.bmesh_object(f"cap_{c_name}_{side}", bm)

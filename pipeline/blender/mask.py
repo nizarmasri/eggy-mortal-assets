@@ -31,16 +31,17 @@ THICK = 0.004
 
 
 class Egg:
-    def __init__(self, C, a, b, h, k=0.12, tilt=math.radians(8), phimax=math.radians(96)):
+    def __init__(self, C, a, b, h, k=0.12, tilt=math.radians(8), phimax=math.radians(96), p=1.0):
         self.C = np.array(C, dtype=np.float64)
-        self.a, self.b, self.h, self.k, self.tilt, self.phimax = a, b, h, k, tilt, phimax
+        self.a, self.b, self.h, self.k, self.tilt, self.phimax, self.p = a, b, h, k, tilt, phimax, p
         c, s = math.cos(tilt), math.sin(tilt)
         # Rotation about X by +tilt takes local to world (the top leans towards +Y, the back).
         self.R = np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
         self._tables()
 
     def rho(self, th):
-        return np.sin(th) * (1 + self.k * np.cos(th))
+        # p < 1 fills the shoulders of the ends a little (a superellipse profile); k makes the top the blunt end.
+        return np.sin(th) ** self.p * (1 + self.k * np.cos(th))
 
     def local(self, phi, th, inset=0.0):
         r = self.rho(th)
@@ -155,12 +156,12 @@ def fit(body, eyes, spec=None):
     C = np.array([0.0, ear_front - spec.get("edge_ahead", 0.004), 0.5 * (chin_z - spec.get("tip_below_chin", 0.014) + crown + spec.get("top_over_crown", 0.004))])
     h = 0.5 * (crown + spec.get("top_over_crown", 0.004) - (chin_z - spec.get("tip_below_chin", 0.014)))
     a = xmax + spec.get("side_gap", 0.010)
-    egg = Egg(C, a, 0.1, h, k=spec.get("k", 0.12), tilt=math.radians(spec.get("tilt", 6)), phimax=math.radians(90))
+    egg = Egg(C, a, 0.1, h, k=spec.get("k", 0.16), tilt=math.radians(spec.get("tilt", 6)), phimax=math.radians(90), p=spec.get("p", 0.82))
     # Depth: the nose tip and a clearance in front of it, at the nose's latitude.
     nz = egg.to_local(np.array([[0, nose_y, eye_z - 0.03]]))[0]
     th_n = math.acos(max(-1, min(1, nz[2] / h)))
     b = (-nz[1] + spec.get("nose_gap", 0.012) + THICK) / max(egg.rho(th_n), 0.3)
-    egg = Egg(C, a, b, h, k=egg.k, tilt=egg.tilt, phimax=egg.phimax)
+    egg = Egg(C, a, b, h, k=egg.k, tilt=egg.tilt, phimax=egg.phimax, p=egg.p)
     # Everything under the shell must clear its inner surface: the face, and the scalp pushed out by the hair.
     pts = np.concatenate([P[face] + N[face] * spec.get("clearance", 0.008), E + np.array([0, -0.004, 0])])
     for it in range(40):
@@ -171,11 +172,20 @@ def fit(body, eyes, spec=None):
         if bad.sum() < 3:
             break
         q = egg.to_local(pts[bad])
-        side = np.abs(q[:, 0]) / egg.a > 0.6
-        tall = np.abs(q[:, 2]) / egg.h > 0.7
-        egg = Egg(egg.C, egg.a * (1.01 if side.mean() > 0.3 else 1.0), egg.b * (1.01 if (~side).mean() > 0.3 else 1.0),
-                  egg.h * (1.008 if tall.mean() > 0.3 else 1.0), k=egg.k, tilt=egg.tilt, phimax=egg.phimax)
-    log(f"egg: C={egg.C.round(4).tolist()} a={egg.a:.4f} b={egg.b:.4f} h={egg.h:.4f} (nose {nose_y:.3f}, ears {ear_front:.3f}, chin {chin_z:.3f}, crown {crown:.3f}, {it} grow steps)")
+        top = q[:, 2] / egg.h > 0.45
+        side = (np.abs(q[:, 0]) / egg.a > 0.6) & ~top
+        front = ~top & ~side
+        a2, b2, h2, C2 = egg.a, egg.b, egg.h, egg.C.copy()
+        if top.mean() > 0.25:
+            # The skull's dome: lengthen the egg upwards, keeping the chin tip where it is.
+            h2 = egg.h * 1.008
+            C2[2] += (h2 - egg.h)
+        if side.mean() > 0.25:
+            a2 *= 1.008
+        if front.mean() > 0.25:
+            b2 *= 1.008
+        egg = Egg(C2, a2, b2, h2, k=egg.k, tilt=egg.tilt, phimax=egg.phimax, p=egg.p)
+    log(f"egg: C={egg.C.round(4).tolist()} a={egg.a:.4f} b={egg.b:.4f} h={egg.h:.4f} p={egg.p} k={egg.k} (nose {nose_y:.3f}, ears {ear_front:.3f}, chin {chin_z:.3f}, crown {crown:.3f}, {it} grow steps)")
     return egg
 
 
