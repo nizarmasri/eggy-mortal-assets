@@ -143,7 +143,7 @@ for item in preset.get("outfit", []):
         outfit.level_top(o)
         if item.get("waist"):
             info = {**info, "waist_z": item["waist"] * m["height"]}
-    elif kind in ("headband", "ribbons"):
+    elif kind in ("headband", "ribbons", "hood"):
         late.append(item)
         continue
     else:
@@ -168,13 +168,21 @@ if preset.get("hair"):
             hair_pieces += [knot, tie]
 eye_y = 0.5 * (centres["eye_l"][1] + centres["eye_r"][1])
 eye_th = float(np.interp(eye_y, egg.M, egg.th_t))
-strap = outfit.strap([*(hair_pieces[:1]), bod], egg, eye_th + 0.05)
-util.set_material(strap, shader_for("g_strap", {"type": "leather", "color": spec_mask.get("strap", (0.16, 0.10, 0.07))}, info))
-pieces += hair_pieces + [strap]
+pieces += hair_pieces
+# A hood holds the mask itself; without one a strap round the back of the head does.
+if not any(it["kind"] == "hood" for it in late):
+    strap = outfit.strap([*(hair_pieces[:1]), bod], egg, eye_th + 0.05)
+    util.set_material(strap, shader_for("g_strap", {"type": "leather", "color": spec_mask.get("strap", (0.16, 0.10, 0.07))}, info))
+    pieces.append(strap)
 ribbon_objs = []
 for item in late:
     name = item.get("name", item["kind"])
-    if item["kind"] == "headband":
+    if item["kind"] == "hood":
+        o, laces, info["hood"] = outfit.hood(bod, arm, m, egg, item, name=name)
+        util.set_material(o, shader_for("g_" + name, item.get("shader", {"type": "satin", "color": (0.55, 0.03, 0.06)}), info))
+        util.set_material(laces, shader_for(f"g_{name}_laces", item.get("laces", {"type": "cord", "color": (0.8, 0.47, 0.03)}), info))
+        pieces += [o, laces]
+    elif item["kind"] == "headband":
         o = outfit.headband([mask_obj, *(hair_pieces[:1]), bod], egg, item, name=name)
         util.set_material(o, shader_for("g_" + name, item.get("shader", {"type": "cord", "color": (0.8, 0.8, 0.8)}), info))
         pieces.append(o)

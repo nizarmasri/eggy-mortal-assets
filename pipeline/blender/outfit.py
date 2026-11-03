@@ -13,6 +13,7 @@ import numpy as np
 from mathutils import Vector
 from mathutils.bvhtree import BVHTree
 
+import mask as egg_mask
 import util
 from util import log, smoothstep
 
@@ -614,6 +615,158 @@ def strap(surfaces, egg, th, name="strap", width=0.018, thick=0.0025):
         return np.stack([row / (n_rows - 1) * 0.5, np.where((k == 0) | (k == 3), 1.0, 0.0), np.full(len(co), 0.4)], axis=1)
     set_param(obj, param)
     return obj
+
+
+# ---------- a luchador's hood ----------
+
+def _mask_side(egg, P):
+    """For points near the head: signed distance (metres, along the surface) from the egg mask's edge, positive
+    under the mask, negative behind it; and whether the point is inside the egg."""
+    phi, th, r = egg.params(P)
+    aphi = np.abs(phi)
+    under = aphi < egg.phimax
+    X, Y = egg.canvas_xy(np.where(under, phi, np.sign(phi) * egg.phimax * 0.999), th)
+    ti = np.clip(np.searchsorted(egg.th_t, th), 1, len(egg.th_t) - 1)
+    inside_d = egg.S[ti, -1] - np.abs(X)
+    behind_d = -(aphi - egg.phimax) * egg.a * np.maximum(egg.rho(th), 0.15)
+    # In front of the edge but outside the egg (the throat under the chin's tip): how far outside it.
+    outside_d = -(r - 1) * min(egg.a, egg.b)
+    return np.where(under & (r <= 1), inside_d, np.where(under, outside_d, behind_d)), r, phi, th
+
+
+def hood(body, arm, m, egg, spec, name="hood"):
+    """A cloth hood under the egg mask, the way a luchador wears one: it covers the skull, the back and sides of
+    the head and the neck down to a collar line at its base, laced up the back. Its face opening sits under the
+    mask (a band of it tucks under the mask's edge, held inside the shell, so no skin shows and nothing pokes
+    through the porcelain); the ears are smoothed over. Weights are the head and neck's, turning fully to the
+    head under the mask so hood and mask move as one.
+
+    Returns (hood, laces, info): info carries the lace panel for the pattern."""
+    k = m["height"] / 1.78
+    off = spec.get("offset", 0.004)
+    overlap = spec.get("overlap", 0.016)
+    P = util.positions(body)
+    W = util.weights_matrix(body, ["head", "neck_01", "spine_03"] + sided(ARM_BONES))
+    arm_w = W[:, 3:].sum(axis=1)
+    # The collar line: a plane through the base of the neck, lower at the front (the notch between the
+    # collarbones) than at the back.
+    nb = np.array(m["neck_01"])
+    neckv = W[:, 1] > 0.5
+    y_front, y_back = float(P[neckv, 1].min()), float(P[neckv, 1].max())
+    A = np.array([0.0, y_back, nb[2] + spec.get("back", 0.0)])
+    B = np.array([0.0, y_front, min(m["clavicle_l"][2], m["clavicle_r"][2]) + spec.get("front", 0.012)])
+    v = B - A
+    n = np.array([0.0, v[2], -v[1]])
+    n = n / np.linalg.norm(n)
+    if n[2] < 0:
+        n = -n
+    above = (P - A) @ n
+    region = (above > -0.03) & (arm_w < 0.5) & (P[:, 2] > nb[2] - 0.12) & (W[:, :3].sum(axis=1) > 0.2)
+    sd, r, phi, th = _mask_side(egg, P)
+    deep = (sd > overlap) & (r < 1.02)
+    obj = util.extract_faces(body, util.faces_of_vertices(body, region & ~deep), name)
+    util.cut_plane(obj, A, n, keep_below=False)
+    util.decimate_to(obj, spec.get("tris", 2600))
+    # Off the skin, then smooth: a stretched hood does not follow the ear's folds or the skull's bumps.
+    Q = util.positions(obj)
+    E = util.edges(obj)
+    ears = util.weights_matrix(obj, ["ears"])[:, 0] > 0.2
+    soft = np.where(util.grow(ears, E, 3), 1.0, spec.get("calm", 0.35))
+    soft[boundary_verts(obj)] = 0.0  # the edges are straightened along themselves, below
+    Q = util.taubin(Q + util.normals(obj) * off, E, spec.get("smooth", 18), weight=soft)
+    tree = BVHTree.FromObject(body, bpy.context.evaluated_depsgraph_get())
+    Q, moved = util.push_out(Q, tree, off * 0.75)
+    # Under the mask (and a few degrees past its edge) the hood stays inside the shell.
+    sd, r, phi, th = _mask_side(egg, Q)
+    limit = 1 - (egg_mask.THICK + 0.003) / min(egg.a, egg.b)
+    past = np.clip((np.abs(phi) - egg.phimax) / math.radians(10), 0, 1)
+    rmax = limit + past * past * 2.0
+    clamp = (r > rmax) & (th > 0.02) & (th < math.pi - 0.02)
+    if clamp.any():
+        q = egg.to_local(Q[clamp])
+        f = (rmax[clamp] / r[clamp])[:, None]
+        q[:, :2] *= f
+        Q[clamp] = q @ egg.R.T + egg.C
+    util.set_positions(obj, Q)
+    log(f"{name}: {moved} pushed clear of the skin, {int(clamp.sum())} held inside the mask")
+    util.smooth_boundary(obj, 8)
+    sol = obj.modifiers.new("Rim", 'SOLIDIFY')
+    sol.thickness_clamp = 1.0
+    sol.thickness = 0.0025
+    sol.offset = -1
+    sol.use_rim_only = True
+    util.apply_modifier(obj, sol.name)
+    util.shade_smooth(obj)
+    # Weights: the body's, blending to all head under the mask.
+    Q = util.positions(obj)
+    sd, r, phi, th = _mask_side(egg, Q)
+    f = smoothstep(-0.012, 0.006, sd)
+    hg = obj.vertex_groups.get("head") or obj.vertex_groups.new(name="head")
+    for vtx in obj.data.vertices:
+        fv = float(f[vtx.index])
+        if fv <= 1e-3:
+            continue
+        old_head = 0.0
+        for g in vtx.groups:
+            if g.group == hg.index:
+                old_head = g.weight
+            else:
+                g.weight *= (1 - fv)
+        hg.add([vtx.index], old_head * (1 - fv) + fv, 'REPLACE')
+    util.limit_and_normalize(obj)
+    # Pattern coordinates: x round the head from the back (metres), y height, z the distance to the nearest
+    # edge that wants a trim (behind the mask's edge, or above the collar line).
+    yc = float(egg.C[1])
+    d_plane = (Q - A) @ n
+
+    def param(co, vi, fi):
+        # Across the back, x is the plain lateral offset (the laces are placed in it); elsewhere nothing reads it.
+        x = np.where(co[:, 1] > yc, co[:, 0], np.sign(co[:, 0]) * 0.5)
+        return np.stack([x, co[:, 2], np.minimum(-sd[vi], d_plane[vi])], axis=1)
+    set_param(obj, param)
+    # Laces up the back: a slit from the nape to the back of the skull, crossed in an X between eyelets.
+    hood_tree = BVHTree.FromObject(obj, bpy.context.evaluated_depsgraph_get())
+    z_lo = float(A[2]) + spec.get("lace_from", 0.035) * k
+    z_hi = float(egg.C[2]) + spec.get("lace_to", 0.03) * k
+    crosses = spec.get("crosses", 7)
+    w = spec.get("lace_w", 0.011) * k
+    lr = spec.get("lace_r", 0.0016)
+
+    def on_back(x, z):
+        hit = hood_tree.ray_cast(Vector((x, yc + 0.5, z)), Vector((0, -1, 0)), 0.8)
+        if hit[0] is None:
+            return Vector((x, yc + 0.1, z))
+        return hit[0] + hit[1] * (lr * 1.3)
+    zs = np.linspace(z_lo, z_hi, crosses + 1)
+    laces = []
+    for start in (1, -1):
+        pts = []
+        for i in range(crosses):
+            a, b = start * (1 if i % 2 == 0 else -1), start * (-1 if i % 2 == 0 else 1)
+            for t in np.linspace(0, 1, 5, endpoint=False):
+                pts.append(on_back(w * (a + (b - a) * t), zs[i] + (zs[i + 1] - zs[i]) * t))
+        pts.append(on_back(w * (start * (1 if crosses % 2 == 0 else -1)), zs[-1]))
+        laces.append(tube_along(pts, lr, sides=6, name=f"{name}_lace{start}"))
+    # The tie at the nape: two short ends hanging from the bottom eyelets.
+    for sgn in (1, -1):
+        base = on_back(0.0, z_lo - 0.004)
+        tail = [base + Vector((sgn * 0.004 * t, 0.006 * t, -0.028 * k * t)) for t in np.linspace(0, 1, 5)]
+        laces.append(tube_along(tail, lr, sides=6, name=f"{name}_tie{sgn}"))
+    lace = util.join(laces, name + "_laces")
+    util.shade_smooth(lace)
+    util.transfer_weights(lace, obj)
+    info = {"lace_lo": z_lo, "lace_hi": z_hi, "lace_w": w, "crosses": crosses}
+    log(f"{name}: {util.tri_count(obj)} tris, laces {util.tri_count(lace)} tris ({z_lo:.3f} to {z_hi:.3f})")
+    return obj, lace, info
+
+
+def boundary_verts(obj):
+    """Indices of the vertices on open edges."""
+    bm = bmesh.new()
+    bm.from_mesh(obj.data)
+    out = sorted({v.index for e in bm.edges if e.is_boundary for v in e.verts})
+    bm.free()
+    return np.array(out, dtype=np.int64)
 
 
 # ---------- tight gear chosen by region ----------
