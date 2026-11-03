@@ -21,7 +21,19 @@
   "targets": [
    {
     "target": "stomach-pregnant-incr",
+    "value": 1.0
+   },
+   {
+    "target": "measure-waist-circ-incr",
+    "value": 1.0
+   },
+   {
+    "target": "measure-hips-circ-incr",
     "value": 0.5
+   },
+   {
+    "target": "measure-bust-circ-incr",
+    "value": 0.7
    },
    {
     "target": "torso-scale-depth-incr",
@@ -40,20 +52,44 @@
     "value": 0.6
    },
    {
+    "target": "measure-neck-circ-incr",
+    "value": 0.8
+   },
+   {
     "target": "r-upperarm-fat-incr",
-    "value": 0.35
+    "value": 0.85
    },
    {
     "target": "l-upperarm-fat-incr",
-    "value": 0.35
+    "value": 0.85
+   },
+   {
+    "target": "r-lowerarm-fat-incr",
+    "value": 0.6
+   },
+   {
+    "target": "l-lowerarm-fat-incr",
+    "value": 0.6
    },
    {
     "target": "r-upperleg-fat-incr",
-    "value": 0.3
+    "value": 0.85
    },
    {
     "target": "l-upperleg-fat-incr",
-    "value": 0.3
+    "value": 0.85
+   },
+   {
+    "target": "r-lowerleg-fat-incr",
+    "value": 0.5
+   },
+   {
+    "target": "l-lowerleg-fat-incr",
+    "value": 0.5
+   },
+   {
+    "target": "buttocks-volume-incr",
+    "value": 0.4
    }
   ],
   "tint": [
@@ -98,45 +134,26 @@
      0.07
     ],
     "rough": 0.3
-   }
+   },
+   "cut_top": true
   },
   {
-   "kind": "tight",
+   "kind": "boots",
    "name": "boots",
-   "bones": [
-    "foot_l",
-    "foot_r",
-    "ball_l",
-    "ball_r",
-    "calf_l",
-    "calf_r"
-   ],
-   "along": {
-    "calf_l": [
-     0.45,
-     1.2
-    ],
-    "calf_r": [
-     0.45,
-     1.2
-    ]
-   },
-   "offset": 0.005,
-   "sole": 0.006,
+   "cuff": 0.45,
    "shader": {
-    "type": "leather",
+    "type": "boot",
     "color": [
      0.55,
      0.03,
      0.06
-    ]
+    ],
+    "sole": 0.022
    }
   },
   {
    "kind": "cape",
    "name": "cape",
-   "length": 0.5,
-   "width": 0.2,
    "shader": {
     "type": "satin",
     "color": [
@@ -145,8 +162,28 @@
      0.06
     ],
     "rough": 0.35
+   }
+  },
+  {
+   "kind": "hood",
+   "name": "hood",
+   "shader": {
+    "type": "satin",
+    "color": [
+     0.55,
+     0.03,
+     0.06
+    ],
+    "rough": 0.28
    },
-   "bottom_width": 0.27
+   "laces": {
+    "type": "cord",
+    "color": [
+     0.8,
+     0.47,
+     0.03
+    ]
+   }
   }
  ],
  "info": {
@@ -159,8 +196,7 @@
    0.025,
    0.02
   ],
-  "no_knot": true,
-  "thickness": 0.003
+  "shell": false
  },
  "mask": {
   "shards": 34,

@@ -805,6 +805,9 @@ def tight(body, arm, m, spec, name):
     faces = util.faces_of_vertices(body, vm)
     obj = util.extract_faces(body, faces, name)
     util.decimate_to(obj, spec.get("tris", 2400))
+    if spec.get("cut_top") and "z" in spec:
+        # A clean top edge (a waistband) instead of the zigzag the face selection leaves.
+        util.cut_plane(obj, (0, 0, spec["z"][1] * m["height"] - spec.get("cut_below", 0.025)), (0, 0, 1), keep_below=True)
     off = spec.get("offset", 0.0018)
     P = util.positions(obj)
     N = util.normals(obj)

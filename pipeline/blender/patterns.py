@@ -61,23 +61,36 @@ def elyema(names, slot, prm, A, R, ctx):
             f = np.clip((x - 0.15) / 0.85, 0, 1)
             top = knee + 0.06 + (0.10 + 0.16 * f) * (0.55 + 0.45 * np.cos(z * np.pi * 2.6))
             gold = on & (x > 0.15) & (y < top)
-            trim = on & (x > 0.12) & (y >= top) & (y < top + 0.009)
+            trim = on & (x > 0.15) & (y >= top) & (y < top + 0.009)
             band = on & (y > (y[on].max() if on.any() else waist) - 0.05)
             A, R = _paint(A, R, gold | band, GOLD, 0.3)
             A, R = _paint(A, R, trim, (0.95, 0.93, 0.88), 0.35)
         elif n == "g_boots":
-            # Crimson wrestling boots: a gold cuff and side stripe, a black sole.
+            # Crimson wrestling boots laced in gold up the front: a gold cuff and side stripe, a black sole.
             top = y[on].max() if on.any() else 0.5
             A, R = _paint(A, R, on & (y > top - 0.035), GOLD, 0.3)
-            A, R = _paint(A, R, on & (x > 0.82) & (y > 0.03), GOLD, 0.3)
+            A, R = _paint(A, R, on & (x > 0.82) & (y > 0.03) & (y < top - 0.035), GOLD, 0.3)
+            A, R = _laces(A, R, on, x, y, z, 0.075, top - 0.045, GOLD, (0.4, 0.02, 0.045))
             A, R = _paint(A, R, on & (y < 0.022), (0.05, 0.045, 0.045), 0.7)
         elif n == "g_cape":
-            xm = np.abs(x[on]).max() if on.any() else 0.3
-            ym = y[on].min() if on.any() else 0.9
-            trim = on & ((np.abs(x) > xm - 0.028) | (y < ym + 0.028))
-            A, R = _paint(A, R, trim, GOLD, 0.3)
-            star = on & (np.hypot(x, y - (y[on].max() - 0.13 if on.any() else 1.2)) < 0.05)
-            A, R = _paint(A, R, star, GOLD, 0.3)
+            # Gold trim down the sides and along the hem, a gold collar, a gold sun on the back.
+            cloth = on & (z >= 0)
+            ymin = y[cloth].min() if cloth.any() else 0.5
+            ymax = y[cloth].max() if cloth.any() else 1.6
+            A, R = _paint(A, R, cloth & ((z < 0.03) | (y < ymin + 0.035)), GOLD, 0.3)
+            A, R = _paint(A, R, on & (z < -0.5), GOLD, 0.3)
+            A, R = _paint(A, R, cloth & _sun(x, y, 0.0, ymax - 0.3, 0.06, 0.13), GOLD, 0.3)
+        elif n == "g_hood":
+            # Gold framing the mask's edge and round the collar line; laces up the back over a dark slit.
+            A, R = _paint(A, R, on & (z < 0.012), GOLD, 0.3)
+            hd = ctx.get("hood")
+            if hd:
+                lo, hi, w = hd["lace_lo"], hd["lace_hi"], hd["lace_w"]
+                A, R = _paint(A, R, on & (np.abs(np.abs(x) - (w + 0.006)) < 0.0013) & (y > lo - 0.012) & (y < hi + 0.012), GOLD, 0.3)
+                A, R = _paint(A, R, on & (np.abs(x) < 0.0045) & (y > lo - 0.006) & (y < hi + 0.004), (0.03, 0.015, 0.015), 0.8)
+                for zi in np.linspace(lo, hi, hd["crosses"] + 1):
+                    for sx in (w, -w):
+                        A, R = _paint(A, R, on & (np.hypot(x - sx, y - zi) < 0.0034), GOLD, 0.25)
     return A, R
 
 
