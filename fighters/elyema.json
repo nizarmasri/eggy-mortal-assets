@@ -29,11 +29,11 @@
    },
    {
     "target": "measure-hips-circ-incr",
-    "value": 0.5
+    "value": 1.0
    },
    {
     "target": "measure-bust-circ-incr",
-    "value": 0.7
+    "value": 1.0
    },
    {
     "target": "torso-scale-depth-incr",
@@ -53,45 +53,68 @@
    },
    {
     "target": "measure-neck-circ-incr",
-    "value": 0.8
+    "value": 1.0
    },
    {
     "target": "r-upperarm-fat-incr",
-    "value": 0.85
+    "value": 1.0
    },
    {
     "target": "l-upperarm-fat-incr",
-    "value": 0.85
+    "value": 1.0
    },
    {
     "target": "r-lowerarm-fat-incr",
-    "value": 0.6
+    "value": 0.8
    },
    {
     "target": "l-lowerarm-fat-incr",
-    "value": 0.6
+    "value": 0.8
    },
    {
     "target": "r-upperleg-fat-incr",
-    "value": 0.85
+    "value": 1.0
    },
    {
     "target": "l-upperleg-fat-incr",
-    "value": 0.85
+    "value": 1.0
    },
    {
     "target": "r-lowerleg-fat-incr",
-    "value": 0.5
+    "value": 0.7
    },
    {
     "target": "l-lowerleg-fat-incr",
-    "value": 0.5
+    "value": 0.7
    },
    {
     "target": "buttocks-volume-incr",
+    "value": 0.7
+   },
+   {
+    "target": "measure-underbust-circ-incr",
+    "value": 1.0
+   },
+   {
+    "target": "measure-thigh-circ-incr",
+    "value": 0.6
+   },
+   {
+    "target": "measure-upperarm-circ-incr",
+    "value": 0.6
+   },
+   {
+    "target": "measure-calf-circ-incr",
     "value": 0.4
    }
   ],
+  "sculpt": {
+   "belly": 0.075,
+   "waist": 0.025,
+   "at": 0.42,
+   "height": 0.15,
+   "width": 0.17
+  },
   "tint": [
    0.9,
    0.76,

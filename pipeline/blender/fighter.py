@@ -68,6 +68,7 @@ stage("body")
 arm, bod, eyes, mhclo = body.build(preset)
 body.normalise_rolls(arm, ref_axes)
 m = body.measurements(arm, bod)
+body.sculpt(bod, arm, m, preset["human"].get("sculpt"))
 log("height", round(m["height"], 3))
 teeth = body.teeth(bod, arm)
 
@@ -178,6 +179,7 @@ ribbon_objs = []
 for item in late:
     name = item.get("name", item["kind"])
     if item["kind"] == "hood":
+        body.mark_ears(bod)
         o, laces, info["hood"] = outfit.hood(bod, arm, m, egg, item, name=name)
         util.set_material(o, shader_for("g_" + name, item.get("shader", {"type": "satin", "color": (0.55, 0.03, 0.06)}), info))
         util.set_material(laces, shader_for(f"g_{name}_laces", item.get("laces", {"type": "cord", "color": (0.8, 0.47, 0.03)}), info))
@@ -221,6 +223,9 @@ for z0, z1 in hide_zones:
 if hide_feet:
     # Boots hide the feet for good: no toe can show through them however the foot bends.
     util.delete_faces(bod, util.faces_of_vertices(bod, outfit.foot_hidden(bod)))
+if bod.vertex_groups.get("mortal_ears") is not None:
+    # A hood flattens the ears under it: they go, so the hood can lie smooth over them.
+    util.delete_faces(bod, util.faces_of_vertices(bod, util.weights_matrix(bod, ["mortal_ears"])[:, 0] >= 0.5))
 util.limit_and_normalize(bod)
 for g in list(bod.vertex_groups):
     if g.name not in export.JOINTS:

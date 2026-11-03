@@ -193,6 +193,66 @@ def measurements(arm, body):
     return m
 
 
+def target_vertices(names):
+    """Vertex indices a set of MakeHuman targets moves, in the basemesh's own numbering (which the export
+    copy keeps: MPFB's helper geometry comes after the body's vertices)."""
+    import gzip
+    out = set()
+    for n in names:
+        path = mp.TargetService.target_full_path(n)
+        if not path:
+            log("target not found:", n)
+            continue
+        opener = gzip.open if str(path).endswith(".gz") else open
+        with opener(path, "rt") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 4 and not line.startswith("#"):
+                    try:
+                        out.add(int(parts[0]))
+                    except ValueError:
+                        pass
+    return out
+
+
+def mark_ears(body, group="mortal_ears"):
+    """A vertex group on the ears, read from the targets that move them (the basemesh has no ear group)."""
+    ids = sorted(i for i in target_vertices(["l-ear-trans-backward", "r-ear-trans-backward"]) if i < len(body.data.vertices))
+    if not ids:
+        return None
+    P = util.positions(body)[ids]
+    log(f"ears: {len(ids)} vertices, |x| {np.abs(P[:, 0]).mean():.3f}, z {P[:, 2].mean():.3f}")
+    vg = body.vertex_groups.get(group) or body.vertex_groups.new(name=group)
+    vg.add(ids, 1.0, 'REPLACE')
+    return vg
+
+
+def sculpt(body, arm, m, spec):
+    """Flesh the targets cannot give on their own: a big round belly and a thick waist, pushed out along the
+    normals in a smooth field after the abs are calmed. Only the skin moves: bones, rest pose and weights stay
+    exactly as they are."""
+    if not spec:
+        return
+    k = m["height"] / 1.78
+    P = util.positions(body)
+    N = util.normals(body)
+    arms = util.weights_matrix(body, [f"{n}_{s}" for s in ("l", "r") for n in (
+        "upperarm", "lowerarm", "hand")]).sum(axis=1)
+    z_lo = 0.5 * (m["thigh_l"][2] + m["thigh_r"][2])
+    z_hi = float(m["spine_03"][2])
+    zb = z_lo + spec.get("at", 0.4) * (z_hi - z_lo)
+    gz = np.exp(-((P[:, 2] - zb) / (spec.get("height", 0.15) * k)) ** 2)
+    gx = np.exp(-(P[:, 0] / (spec.get("width", 0.17) * k)) ** 2)
+    keep = (arms < 0.05).astype(float)
+    front = util.smoothstep(-0.2, 0.75, -N[:, 1])
+    belly = gz * gx * front * keep
+    E = util.edges(body)
+    P = util.taubin(P, E, spec.get("calm", 14), weight=np.clip(belly * 1.6, 0, 0.9))
+    d = k * (spec.get("belly", 0.07) * belly + spec.get("waist", 0.025) * gz * keep)
+    util.set_positions(body, P + N * d[:, None])
+    log(f"sculpt: belly {spec.get('belly', 0.07) * k:.3f} m at z {zb:.3f}, waist {spec.get('waist', 0.025) * k:.3f} m")
+
+
 def head_vertices(body, threshold=0.5):
     W = util.weights_matrix(body, ["head", "neck_01"])
     return np.where(W[:, 0] >= threshold)[0]
