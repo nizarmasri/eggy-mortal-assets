@@ -69,8 +69,9 @@ Loading needs `GLTFLoader` with `MeshoptDecoder` (`EXT_meshopt_compression` is r
 (`KHR_texture_basisu`; colour and ORM maps are ETC1S, normal maps UASTC). Positions, normals and UVs are
 quantised (`KHR_mesh_quantization`); `_RESTPOS` is not. No animations, no morph targets, no cameras or lights.
 
-Space: metres, Y up, the fighter facing +Z, standing on y = 0, centred on x = z = 0, in the T-pose-ish rest
-pose of MPFB's `game_engine` rig (arms out and down about 45°). Left is +X.
+Space: metres, Y up, the fighter facing +Z, standing on y = 0, centred on x = z = 0. Left is +X. The rest
+(bind) pose is MakeHuman's: upper arms out and down about 45°, elbows bent about 45° forward so the hands
+sit in front of the hips, legs straight and a little apart. Every fighter shares it.
 
 ### Skeleton
 
@@ -125,8 +126,10 @@ from `head` keeping its world transform, and throw it. The break faces use the b
 
 **Chain pieces.** `cape` and `fitas` hang from a spring chain the game simulates. Each vertex carries
 `_CHAIN` (float, 0 where the piece is fixed → 1 at its free end) and `_CHAINU` (float, −1 … 1 across it);
-`fitas` also has `_STRIP` (float, which ribbon: 0, 1, 2). At rest they are skinned (the cape with the weights of
-the back under it, the ribbons 100% to `head`) and look right without the simulation. The `gourd` hangs
+`fitas` also has `_STRIP` (float, which ribbon: 0, 1, 2). At rest they are skinned and look right without the
+simulation: the cape with the weights of the back under it (the collar on `spine_03` and the clavicles,
+the rest on `spine_03`), each ribbon on `head` at the knot, blending through `neck_01` to `spine_03` along
+its length. The `gourd` hangs
 100% on `pelvis`; it has no chain attributes.
 
 ### Gore
@@ -146,7 +149,8 @@ weighted 100% to that cut's bone, so the seam never opens while the limb is atta
 | 4 | upperarm_r | 10 | pelvis |
 | 5 | forearm_r | | |
 
-`gear` carries the same attribute. To sever at a cut, hide (in the shader, by `_SEGMENT`) the segments on the
+`gear` carries the same attribute (the separate `cape`, `fitas` and `gourd` do not: they hang from the
+torso, the head and the pelvis and go with whichever piece holds those). To sever at a cut, hide (in the shader, by `_SEGMENT`) the segments on the
 far side on the original mesh and show them on a detached copy, then show `cap_<cut>_p` (the stump's cap,
 facing away from the body) and `cap_<cut>_d` (the severed piece's cap). The caps fit the loop exactly.
 
