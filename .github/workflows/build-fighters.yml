@@ -103,3 +103,55 @@ jobs:
           name: previews
           pattern: previews-*
           delete-merged: false
+
+  publish:
+    needs: build
+    if: inputs.publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: fighter-*
+          path: pack
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: previews-*
+          path: previews
+          merge-multiple: true
+      - name: The common set (three r186's Basis transcoder, for KTX2Loader)
+        run: |
+          mkdir -p pack/common /tmp/three
+          cd /tmp/three
+          for i in 1 2 3 4 5; do npm pack three@0.186.0 --silent && break; sleep $((i * 5)); done
+          tar -xzf three-0.186.0.tgz package/examples/jsm/libs/basis
+          cp package/examples/jsm/libs/basis/basis_transcoder.js package/examples/jsm/libs/basis/basis_transcoder.wasm "$GITHUB_WORKSPACE/pack/common/"
+      - id: p
+        name: Manifest, tarball, parts
+        run: node pipeline/publish.mjs --in pack --rel rel --previews previews
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACK: ${{ steps.p.outputs.pack }}
+        run: |
+          {
+            echo "Mortal Eggy asset pack $PACK, built by run ${{ github.run_id }} from ${{ github.sha }}."
+            echo
+            echo "- \`mortal-$PACK.tar.NN\`: the shipped tree in 10 MiB parts (\`parts.json\` lists them with sha256)."
+            echo "- \`manifest.json\`: every shipped file with size, sha256 and set. Layout and node names: PACK.md."
+            echo "- Every shipped file on its own (\`fighters-<id>.glb\` …) and the review renders (\`preview-*.png\`, not shipped)."
+          } > notes.md
+          cd rel
+          if gh release view "$PACK" >/dev/null 2>&1; then
+            gh release upload "$PACK" * --clobber
+          else
+            gh release create "$PACK" * --title "$PACK" --notes-file ../notes.md
+          fi
+          echo "Published $PACK" >> "$GITHUB_STEP_SUMMARY"
