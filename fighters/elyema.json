@@ -1,0 +1,137 @@
+{
+ "id": "elyema",
+ "name": "El Yema",
+ "human": {
+  "phenotype": {
+   "gender": 1.0,
+   "age": 0.6,
+   "muscle": 0.85,
+   "weight": 0.9,
+   "proportions": 0.4,
+   "height": 0.7,
+   "cupsize": 0.5,
+   "firmness": 0.5,
+   "race": {
+    "asian": 0.4,
+    "caucasian": 0.45,
+    "african": 0.15
+   }
+  },
+  "skin": "middleage_caucasian_male/middleage_caucasian_male.mhmat",
+  "targets": [],
+  "tint": [
+   0.9,
+   0.76,
+   0.62
+  ],
+  "detail": {
+   "normal": "mindfront_aksel_skin/Aksel_Skin_NRM.png",
+   "spec": "mindfront_aksel_skin/Aksel_Skin_SPEC.png",
+   "strength": 0.6
+  }
+ },
+ "outfit": [
+  {
+   "kind": "tight",
+   "name": "tights",
+   "bones": [
+    "pelvis",
+    "thigh_l",
+    "thigh_r",
+    "calf_l",
+    "calf_r",
+    "spine_01"
+   ],
+   "z": [
+    0.06,
+    0.6
+   ],
+   "exclude": [
+    "hand_l",
+    "hand_r",
+    "lowerarm_l",
+    "lowerarm_r"
+   ],
+   "offset": 0.002,
+   "shader": {
+    "type": "satin",
+    "color": [
+     0.6,
+     0.04,
+     0.07
+    ],
+    "rough": 0.3
+   }
+  },
+  {
+   "kind": "tight",
+   "name": "boots",
+   "bones": [
+    "foot_l",
+    "foot_r",
+    "ball_l",
+    "ball_r",
+    "calf_l",
+    "calf_r"
+   ],
+   "along": {
+    "calf_l": [
+     0.45,
+     1.2
+    ],
+    "calf_r": [
+     0.45,
+     1.2
+    ]
+   },
+   "offset": 0.005,
+   "sole": 0.006,
+   "shader": {
+    "type": "leather",
+    "color": [
+     0.95,
+     0.7,
+     0.18
+    ]
+   }
+  },
+  {
+   "kind": "cape",
+   "name": "cape",
+   "length": 0.42,
+   "width": 0.28,
+   "shader": {
+    "type": "satin",
+    "color": [
+     0.55,
+     0.03,
+     0.06
+    ],
+    "rough": 0.35
+   }
+  }
+ ],
+ "info": {
+  "waist": 0.6,
+  "knee": 0.29
+ },
+ "hair": {
+  "color": [
+   0.03,
+   0.025,
+   0.02
+  ],
+  "no_knot": true,
+  "thickness": 0.003
+ },
+ "mask": {
+  "shards": 34,
+  "seed": 3,
+  "strap": [
+   0.5,
+   0.05,
+   0.07
+  ]
+ },
+ "stance": "lucha"
+}

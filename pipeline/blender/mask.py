@@ -155,7 +155,7 @@ def fit(body, eyes, spec=None):
     xmax = float(np.abs(P[face, 0]).max())
     C = np.array([0.0, ear_front - spec.get("edge_ahead", 0.004), 0.5 * (chin_z - spec.get("tip_below_chin", 0.014) + crown + spec.get("top_over_crown", 0.004))])
     h = 0.5 * (crown + spec.get("top_over_crown", 0.004) - (chin_z - spec.get("tip_below_chin", 0.014)))
-    a = xmax + spec.get("side_gap", 0.010)
+    a = xmax + spec.get("side_gap", 0.016)
     egg = Egg(C, a, 0.1, h, k=spec.get("k", 0.16), tilt=math.radians(spec.get("tilt", 6)), phimax=math.radians(90), p=spec.get("p", 0.82))
     # Depth: the nose tip and a clearance in front of it, at the nose's latitude.
     nz = egg.to_local(np.array([[0, nose_y, eye_z - 0.03]]))[0]
@@ -285,7 +285,7 @@ def build(egg, eyes, body, spec):
     for side in (1, -1):
         sel = E[:, 0] * side > 0
         ec = E[sel].mean(axis=0)
-        cut, pt = _slit_cutter(egg, ec, spec.get("eye_w", 0.040), spec.get("eye_h", 0.0105), spec.get("eye_tilt", 0.35), side, f"cut_eye_{side}")
+        cut, pt = _slit_cutter(egg, ec, spec.get("eye_w", 0.041), spec.get("eye_h", 0.0125), spec.get("eye_tilt", 0.35), side, f"cut_eye_{side}")
         cutters.append(cut)
         slits.append(("eye_l" if side > 0 else "eye_r", pt))
     lips = body.vertex_groups.get("lips")
@@ -338,11 +338,11 @@ def uv_unwrap(obj, egg, break_faces=None):
         d = float(np.dot(n, grad))
         is_break = break_faces is not None and break_faces[p.index]
         phi, th, r = egg.params(pc)
-        if not is_break and d > 0.6 and r_c[0] > 1 - (0.5 * THICK) / lmin:
+        if not is_break and d > 0.5:
             X, Y = egg.canvas_xy(phi, th)
             u, v = egg.uv_of(X, Y)
             out[loops] = np.stack([u, v], axis=1)
-        elif not is_break and d < -0.6:
+        elif not is_break and d < -0.5:
             X, Y = egg.canvas_xy(phi, th)
             out[loops] = np.stack([0.31 + X * egg.scale * 0.6, 0.235 - Y * egg.scale * 0.3], axis=1)
         else:
@@ -488,12 +488,15 @@ def crack_map(cv, seed_points):
     i1 = np.argmin(d2, axis=1)
     s1 = S[i1]
     dmin = np.full(len(P), 1e9)
+    nbr = np.zeros(len(P), dtype=int)
     for j in range(len(S)):
         sj = S[j]
         den = 2 * np.linalg.norm(sj - s1, axis=1)
         num = d2[:, j] - d2[np.arange(len(P)), i1]
         dj = np.where(den > 1e-9, num / np.maximum(den, 1e-9), 1e9)
         dj = np.where(i1 == j, 1e9, dj)
+        upd = dj < dmin
+        nbr[upd] = j
         dmin = np.minimum(dmin, dj)
     rnd = np.array([random.Random(1000 + k).random() for k in range(len(S))])
     shape = cv["X"].shape
@@ -501,7 +504,7 @@ def crack_map(cv, seed_points):
     G = rnd[i1].reshape(shape)
     B = ((i1 + 0.5) / 64.0).reshape(shape)
     R = np.where(cv["valid"], R, 1.0)
-    return np.stack([R, G, B], axis=-1), i1.reshape(shape), dmin.reshape(shape)
+    return np.stack([R, G, B], axis=-1), i1.reshape(shape), dmin.reshape(shape), nbr.reshape(shape)
 
 
 # ---------- textures ----------
@@ -573,3 +576,14 @@ def crack_image(cv, crack, outdir, name="mask_crack"):
     full[r0:] = crack
     small = util.resize(full, size // 2)
     return util.image_from_array(name, small, os.path.join(outdir, f"{name}.png"), non_color=True)
+
+
+def displace(obj, egg, height_fn):
+    """Push the shell along its normals by height_fn(X, Y) (metres; negative = dent), inner and outer alike,
+    so big dents show in the silhouette and in the shards."""
+    P = util.positions(obj)
+    phi, th, _ = egg.params(P)
+    X, Y = egg.canvas_xy(phi, th)
+    h = height_fn(X, Y)
+    n = egg.normal(phi, th)
+    util.set_positions(obj, P + n * h[:, None])

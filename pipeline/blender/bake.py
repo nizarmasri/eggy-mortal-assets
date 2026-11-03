@@ -131,7 +131,7 @@ def body_maps(low, high, size, outdir, tint=(1, 1, 1), hide=(), detail=None, hai
     uneven = g.noise(co, 180.0, 4.0, 0.55)
     fine = g.noise(co, 900.0, 2.0, 0.5)
     height = g.math('ADD', g.math('MULTIPLY', uneven, 0.6), g.math('MULTIPLY', fine, 0.4))
-    rough = g.math('ADD', 0.47, g.math('MULTIPLY', g.noise(co, 60.0, 3.0), 0.16))
+    rough = g.math('ADD', 0.5, g.math('MULTIPLY', g.noise(co, 60.0, 3.0), 0.16))
     g.principled(tex.outputs["Color"], rough, height, strength=0.12, distance=0.0008)
     high.data.materials.clear()
     high.data.materials.append(mat)
@@ -211,7 +211,7 @@ def body_maps(low, high, size, outdir, tint=(1, 1, 1), hide=(), detail=None, hai
         if ds:
             S = _load_array(ds, size)[..., 0]
             S = (S - S.mean()) / max(S.std(), 1e-3)
-            G = np.clip(G - 0.05 * S, 0.4, 0.8)
+            G = np.clip(G - 0.05 * S, 0.48, 0.8)
             log("roughness from", os.path.basename(ds))
     if scalp_mask is not None:
         m = np.clip(scalp_mask * 1.25, 0, 1) ** 1.5

@@ -1,0 +1,180 @@
+{
+ "id": "mara",
+ "name": "Mara Volkova",
+ "human": {
+  "phenotype": {
+   "gender": 0.0,
+   "age": 0.56,
+   "muscle": 0.78,
+   "weight": 0.36,
+   "proportions": 0.85,
+   "height": 0.62,
+   "cupsize": 0.38,
+   "firmness": 0.7,
+   "race": {
+    "asian": 0.0,
+    "caucasian": 1.0,
+    "african": 0.0
+   }
+  },
+  "skin": "young_caucasian_female/young_caucasian_female.mhmat",
+  "targets": [
+   {
+    "target": "torso-vshape-incr",
+    "value": 0.15
+   }
+  ],
+  "tint": [
+   0.98,
+   0.95,
+   0.93
+  ],
+  "detail": {
+   "normal": "mindfront_aksel_skin/Aksel_Skin_NRM.png",
+   "spec": "mindfront_aksel_skin/Aksel_Skin_SPEC.png",
+   "strength": 0.7,
+   "highpass": 20
+  }
+ },
+ "outfit": [
+  {
+   "kind": "loose_pants",
+   "name": "pants",
+   "waist": 0.58,
+   "hem": 0.07,
+   "loose": 0.75,
+   "shader": {
+    "type": "fabric",
+    "color": [
+     0.36,
+     0.37,
+     0.37
+    ],
+    "weave": 1.5
+   }
+  },
+  {
+   "kind": "loose_top",
+   "name": "jacket",
+   "hem": 0.47,
+   "neck": 0.835,
+   "sleeve": 0.0,
+   "v_depth": 0.09,
+   "v_width": 0.5,
+   "ease": 0.012,
+   "shader": {
+    "type": "fabric",
+    "color": [
+     0.06,
+     0.06,
+     0.065
+    ],
+    "weave": 2.0
+   }
+  },
+  {
+   "kind": "belt",
+   "name": "belt",
+   "over": "jacket",
+   "width": 0.04,
+   "shader": {
+    "type": "belt",
+    "color": [
+     0.05,
+     0.05,
+     0.05
+    ],
+    "edge": [
+     0.2,
+     0.2,
+     0.2
+    ]
+   }
+  },
+  {
+   "kind": "tight",
+   "name": "shoes",
+   "bones": [
+    "foot_l",
+    "foot_r",
+    "ball_l",
+    "ball_r",
+    "calf_l",
+    "calf_r"
+   ],
+   "along": {
+    "calf_l": [
+     0.78,
+     1.2
+    ],
+    "calf_r": [
+     0.78,
+     1.2
+    ]
+   },
+   "offset": 0.003,
+   "sole": 0.004,
+   "shader": {
+    "type": "leather",
+    "color": [
+     0.05,
+     0.045,
+     0.045
+    ]
+   }
+  },
+  {
+   "kind": "wraps",
+   "name": "wraps",
+   "knuckles": 0.0,
+   "forearm": 0.08,
+   "shader": {
+    "type": "tape",
+    "color": [
+     0.22,
+     0.22,
+     0.23
+    ]
+   }
+  }
+ ],
+ "hair": {
+  "color": [
+   0.78,
+   0.72,
+   0.6
+  ],
+  "tip": [
+   0.9,
+   0.86,
+   0.76
+  ],
+  "knot_at": "nape",
+  "knot": [
+   0.026,
+   0.022,
+   0.024
+  ],
+  "knot_dir": [
+   0,
+   1,
+   -0.3
+  ],
+  "thickness": 0.004
+ },
+ "mask": {
+  "shards": 30,
+  "seed": 2,
+  "strap": [
+   0.05,
+   0.045,
+   0.045
+  ],
+  "bisque": [
+   0.2,
+   0.18,
+   0.17
+  ]
+ },
+ "stance": "sambo"
+}

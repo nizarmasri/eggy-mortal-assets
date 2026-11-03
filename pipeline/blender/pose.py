@@ -94,6 +94,21 @@ STANCES = {
     # A boxer's guard: both fists high, chin down, weight forward.
     "boxing": dict(drop=0.05, blade=-22, lean=10, counter=10, feet=((0.13, -0.18), (-0.14, 0.18)),
                    lead=(0.05, -0.27, 0.02), rear=(-0.08, -0.16, 0.04), head_tilt=12, knee_out=0.3),
+    # Sambo: low and wide, open hands reaching for a grip.
+    "sambo": dict(drop=0.09, blade=-20, lean=14, counter=8, feet=((0.18, -0.2), (-0.17, 0.18)),
+                  lead=(0.0, -0.36, -0.2), rear=(-0.09, -0.25, -0.24), head_tilt=6, knee_out=0.4, curl=0.35),
+    # Lucha heavyweight: a wide base, arms out to grapple.
+    "lucha": dict(drop=0.05, blade=-15, lean=12, counter=6, feet=((0.22, -0.15), (-0.2, 0.15)),
+                  lead=(0.14, -0.3, -0.12), rear=(-0.22, -0.24, -0.3), head_tilt=4, knee_out=0.45, curl=0.45),
+    # Ginga: deep, the rear leg back, one arm across the face, the other low behind.
+    "ginga": dict(drop=0.12, blade=-35, lean=16, counter=10, feet=((0.2, -0.12), (-0.18, 0.3)),
+                  lead=(-0.02, -0.2, -0.02), rear=(-0.25, 0.08, -0.5), head_tilt=6, knee_out=0.4, curl=0.3),
+    # Taekwondo: side-on and light, hands low, ready to kick.
+    "taekwondo": dict(drop=0.03, blade=-50, lean=3, counter=14, feet=((0.12, -0.3), (-0.1, 0.22)),
+                      lead=(0.02, -0.28, -0.32), rear=(-0.05, -0.16, -0.26), head_tilt=2, knee_out=0.3),
+    # Drunken: weight back, a sway to the side, one hand up as if holding a cup, the other loose.
+    "drunken": dict(drop=0.05, blade=-20, lean=-4, counter=4, side_lean=9, feet=((0.1, -0.18), (-0.15, 0.12)),
+                    lead=(0.02, -0.2, 0.05), rear=(-0.16, 0.02, -0.55), head_tilt=-4, knee_out=0.35, curl=0.6),
     # Muay thai: tall, square, hands high and open-ish.
     "muaythai": dict(drop=0.03, blade=-12, lean=2, counter=6, feet=((0.13, -0.15), (-0.14, 0.14)),
                      lead=(0.08, -0.28, 0.06), rear=(-0.09, -0.2, 0.06), head_tilt=6, knee_out=0.2),
@@ -114,6 +129,8 @@ def stance(arm, m, name="karate"):
     rotate(arm, "spine_01", (1, 0, 0), s["lean"] * 0.5)
     rotate(arm, "spine_02", (0, 0, 1), s["counter"])
     rotate(arm, "spine_02", (1, 0, 0), s["lean"] * 0.5)
+    if s.get("side_lean"):
+        rotate(arm, "spine_01", (0, 1, 0), s["side_lean"])
     # Feet: ankles at their rest height, placed around the body's centre.
     for side, (fx, fy) in zip(("l", "r"), s["feet"]):
         ankle_z = m[f"foot_{side}"][2]
@@ -132,7 +149,7 @@ def stance(arm, m, name="karate"):
         two_bone(arm, f"upperarm_{side}", f"lowerarm_{side}", f"hand_{side}", target, pole)
         fore = (head(arm, f"hand_{side}") - head(arm, f"lowerarm_{side}")).normalized()
         aim(arm, f"hand_{side}", (fore + Vector((0, -0.9, 0))).normalized())
-        fist(arm, side)
+        fist(arm, side, s.get("curl", 1.0))
     # Head facing the opponent, chin down a touch: turn the neck part way, then aim the face.
     rotate(arm, "neck_01", (0, 0, 1), -(s["blade"] + s["counter"]) * 0.6)
     look(arm, "head", Vector((0, -1, -math.tan(math.radians(s["head_tilt"])))))

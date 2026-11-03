@@ -1,0 +1,148 @@
+{
+ "id": "sorn",
+ "name": "Sorn Kittirat",
+ "human": {
+  "phenotype": {
+   "gender": 1.0,
+   "age": 0.53,
+   "muscle": 0.95,
+   "weight": 0.3,
+   "proportions": 0.8,
+   "height": 0.5,
+   "cupsize": 0.5,
+   "firmness": 0.5,
+   "race": {
+    "asian": 0.88,
+    "caucasian": 0.06,
+    "african": 0.06
+   }
+  },
+  "skin": "young_asian_male/young_asian_male.mhmat",
+  "targets": [
+   {
+    "target": "torso-vshape-incr",
+    "value": 0.3
+   }
+  ],
+  "tint": [
+   0.86,
+   0.72,
+   0.58
+  ],
+  "detail": {
+   "normal": "mindfront_aksel_skin/Aksel_Skin_NRM.png",
+   "spec": "mindfront_aksel_skin/Aksel_Skin_SPEC.png",
+   "strength": 1.0
+  }
+ },
+ "outfit": [
+  {
+   "kind": "loose_pants",
+   "name": "shorts",
+   "waist": 0.565,
+   "hem": 0.42,
+   "loose": 1.1,
+   "flare": 0.045,
+   "shader": {
+    "type": "satin",
+    "color": [
+     0.05,
+     0.15,
+     0.6
+    ],
+    "rough": 0.28
+   }
+  },
+  {
+   "kind": "tight",
+   "name": "shintape",
+   "bones": [
+    "calf_l",
+    "calf_r"
+   ],
+   "along": {
+    "calf_l": [
+     0.12,
+     0.88
+    ],
+    "calf_r": [
+     0.12,
+     0.88
+    ]
+   },
+   "axis": "calf_*",
+   "offset": 0.0018,
+   "shader": {
+    "type": "tape",
+    "color": [
+     0.92,
+     0.9,
+     0.86
+    ],
+    "band": 0.03,
+    "angle": 0.4
+   }
+  },
+  {
+   "kind": "tight",
+   "name": "armbands",
+   "bones": [
+    "upperarm_l",
+    "upperarm_r"
+   ],
+   "along": {
+    "upperarm_l": [
+     0.38,
+     0.6
+    ],
+    "upperarm_r": [
+     0.38,
+     0.6
+    ]
+   },
+   "axis": "upperarm_*",
+   "offset": 0.004,
+   "shader": {
+    "type": "cord",
+    "color": [
+     0.75,
+     0.05,
+     0.08
+    ]
+   }
+  },
+  {
+   "kind": "headband",
+   "name": "mongkol",
+   "radius": 0.011,
+   "height": 0.05,
+   "tilt": 14,
+   "shader": {
+    "type": "cord",
+    "color": [
+     0.93,
+     0.92,
+     0.88
+    ]
+   }
+  }
+ ],
+ "hair": {
+  "color": [
+   0.015,
+   0.012,
+   0.011
+  ],
+  "shell": false
+ },
+ "mask": {
+  "shards": 30,
+  "seed": 6,
+  "strap": [
+   0.06,
+   0.1,
+   0.3
+  ]
+ },
+ "stance": "muaythai"
+}

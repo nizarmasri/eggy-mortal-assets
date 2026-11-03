@@ -29,6 +29,7 @@ import bake  # noqa: E402
 import render  # noqa: E402
 import export  # noqa: E402
 import gore  # noqa: E402
+import patterns  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(HERE))
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
@@ -100,6 +101,8 @@ def shader_for(name, sh, info):
 
 
 late = []
+if preset.get("info"):
+    info = {"waist_z": preset["info"]["waist"] * m["height"], "knee_z": preset["info"]["knee"] * m["height"], "hem_z": 0.06 * m["height"], "crotch": outfit.crotch_height(bod)}
 for item in preset.get("outfit", []):
     kind = item["kind"]
     name = item.get("name", kind)
@@ -109,7 +112,8 @@ for item in preset.get("outfit", []):
         if item.get("hide", True):
             hide_zones.append((max(info["knee_z"] + 0.07, info["hem_z"] + 0.06), info["waist_z"] - 0.06))
     elif kind == "belt":
-        o = outfit.belt(pants, arm, info, item, name=name)
+        over = next((p for p in pieces if p.name == item["over"]), pants) if item.get("over") else pants
+        o = outfit.belt(over, arm, info, item, name=name)
     elif kind == "wraps":
         o = outfit.wraps(bod, arm, m, item, name=name)
     elif kind == "tight":
@@ -126,6 +130,11 @@ for item in preset.get("outfit", []):
         o = next(c for c in mhclo if c.name == name)
         for mm in list(o.modifiers):
             o.modifiers.remove(mm)
+        legs = {1: np.array([m["thigh_l"], m["calf_l"], m["foot_l"]]), -1: np.array([m["thigh_r"], m["calf_r"], m["foot_r"]])}
+        crotch = outfit.crotch_height(bod)
+        outfit.set_param(o, lambda co, vi, fi: outfit.lateral_param(co, legs, crotch))
+        if item.get("waist"):
+            info = {**info, "waist_z": item["waist"] * m["height"]}
     elif kind in ("headband", "ribbons"):
         late.append(item)
         continue
@@ -210,14 +219,16 @@ stage("bake body")
 bake.cycles()
 body_albedo, body_orm, body_nrm = bake.body_maps(bod, hi, size_body, TEX, tint=preset["human"].get("tint", (1, 1, 1)), hide=[mask_obj, gear], detail=preset["human"].get("detail"), hair=(preset.get("hair") or {}).get("color"))
 stage("bake gear")
-gear_albedo, gear_orm, gear_nrm = bake.gear_maps(gear, size_gear, TEX, hide=[hi])
+gear_albedo, gear_orm, gear_nrm = bake.gear_maps(gear, size_gear, TEX, hide=[hi], pattern=patterns.for_fighter(FID, dict(info)))
 
 stage("mask textures")
 cv = mask.canvas(egg, size_mask)
 seed_pts, seed_xy = mask.seeds(egg, spec_mask.get("shards", 30), seed=spec_mask.get("seed", 1))
-crack, cells, wall = mask.crack_map(cv, seed_pts)
-ctx = {"slits": centres, "seeds": seed_xy, "cells": cells, "wall": wall, "egg": egg}
+crack, cells, wall, nbr = mask.crack_map(cv, seed_pts)
+ctx = {"slits": centres, "seeds": seed_xy, "cells": cells, "wall": wall, "nbr": nbr, "egg": egg}
 painted = designs.paint(FID, cv, ctx)
+if FID in designs.GEOMETRY:
+    mask.displace(mask_obj, egg, lambda X, Y: designs.GEOMETRY[FID](X, Y, ctx))
 mask_albedo, mask_orm, mask_nrm = mask.textures(egg, cv, painted, TEX, bisque=spec_mask.get("bisque", (0.80, 0.78, 0.74)))
 mask.crack_image(cv, crack, TEX)
 mask.uv_unwrap(mask_obj, egg)

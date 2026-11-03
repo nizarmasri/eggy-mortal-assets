@@ -1,0 +1,117 @@
+{
+ "id": "han",
+ "name": "Han Seo-yun",
+ "human": {
+  "phenotype": {
+   "gender": 0.0,
+   "age": 0.5,
+   "muscle": 0.65,
+   "weight": 0.33,
+   "proportions": 0.9,
+   "height": 0.62,
+   "cupsize": 0.35,
+   "firmness": 0.7,
+   "race": {
+    "asian": 1.0,
+    "caucasian": 0.0,
+    "african": 0.0
+   }
+  },
+  "skin": "young_asian_female/young_asian_female.mhmat",
+  "targets": [],
+  "tint": [
+   1.0,
+   0.98,
+   0.96
+  ],
+  "detail": {
+   "normal": "mindfront_aksel_skin/Aksel_Skin_NRM.png",
+   "spec": "mindfront_aksel_skin/Aksel_Skin_SPEC.png",
+   "strength": 0.55,
+   "highpass": 20
+  }
+ },
+ "outfit": [
+  {
+   "kind": "loose_pants",
+   "name": "dobok_pants",
+   "waist": 0.57,
+   "hem": 0.06,
+   "loose": 1.0,
+   "shader": {
+    "type": "fabric",
+    "color": [
+     0.9,
+     0.9,
+     0.88
+    ]
+   }
+  },
+  {
+   "kind": "loose_top",
+   "name": "dobok",
+   "hem": 0.47,
+   "neck": 0.83,
+   "sleeve": 1.0,
+   "forearm": 0.35,
+   "v_depth": 0.12,
+   "v_width": 0.6,
+   "ease": 0.014,
+   "shader": {
+    "type": "fabric",
+    "color": [
+     0.9,
+     0.9,
+     0.88
+    ]
+   }
+  },
+  {
+   "kind": "belt",
+   "name": "belt",
+   "over": "dobok",
+   "shader": {
+    "type": "belt",
+    "color": [
+     0.025,
+     0.024,
+     0.024
+    ],
+    "edge": [
+     0.16,
+     0.155,
+     0.15
+    ]
+   }
+  }
+ ],
+ "hair": {
+  "color": [
+   0.012,
+   0.01,
+   0.01
+  ],
+  "knot_at": "crown",
+  "knot": [
+   0.02,
+   0.07,
+   0.02
+  ],
+  "knot_dir": [
+   0,
+   1,
+   -0.6
+  ],
+  "thickness": 0.0045
+ },
+ "mask": {
+  "shards": 30,
+  "seed": 7,
+  "strap": [
+   0.05,
+   0.05,
+   0.06
+  ]
+ },
+ "stance": "taekwondo"
+}

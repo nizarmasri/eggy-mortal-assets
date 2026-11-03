@@ -1,0 +1,126 @@
+{
+ "id": "duke",
+ "name": "Duke Okafor",
+ "human": {
+  "phenotype": {
+   "gender": 1.0,
+   "age": 0.55,
+   "muscle": 0.95,
+   "weight": 0.72,
+   "proportions": 0.6,
+   "height": 0.66,
+   "cupsize": 0.5,
+   "firmness": 0.5,
+   "race": {
+    "asian": 0.0,
+    "caucasian": 0.0,
+    "african": 1.0
+   }
+  },
+  "skin": "young_african_male/young_african_male.mhmat",
+  "targets": [
+   {
+    "target": "torso-vshape-incr",
+    "value": 0.3
+   }
+  ],
+  "tint": [
+   1.0,
+   1.0,
+   1.0
+  ],
+  "detail": {
+   "normal": "mindfront_skin_male_african_middleage/skin_male_african_middleage_NRM.png",
+   "spec": "mindfront_skin_male_african_middleage/skin_male_african_middleage_SPEC.png",
+   "strength": 1.0
+  }
+ },
+ "mhclo": [
+  {
+   "file": "elvs_male_swim_shorts1/elvs_male_swim_shorts1.mhclo",
+   "name": "trunks"
+  }
+ ],
+ "outfit": [
+  {
+   "kind": "mhclo",
+   "name": "trunks",
+   "shader": {
+    "type": "satin",
+    "color": [
+     0.0,
+     0.42,
+     0.2
+    ],
+    "rough": 0.3
+   }
+  },
+  {
+   "kind": "wraps",
+   "name": "tape",
+   "shader": {
+    "type": "tape",
+    "color": [
+     0.92,
+     0.9,
+     0.86
+    ]
+   }
+  },
+  {
+   "kind": "tight",
+   "name": "boots",
+   "bones": [
+    "foot_l",
+    "foot_r",
+    "ball_l",
+    "ball_r",
+    "calf_l",
+    "calf_r"
+   ],
+   "along": {
+    "calf_l": [
+     0.35,
+     1.2
+    ],
+    "calf_r": [
+     0.35,
+     1.2
+    ]
+   },
+   "offset": 0.005,
+   "sole": 0.006,
+   "shader": {
+    "type": "leather",
+    "color": [
+     0.05,
+     0.05,
+     0.05
+    ]
+   }
+  }
+ ],
+ "hair": {
+  "color": [
+   0.012,
+   0.01,
+   0.01
+  ],
+  "shell": false
+ },
+ "mask": {
+  "shards": 32,
+  "seed": 5,
+  "strap": [
+   0.04,
+   0.04,
+   0.04
+  ],
+  "bisque": [
+   0.32,
+   0.32,
+   0.34
+  ]
+ },
+ "stance": "boxing"
+}
