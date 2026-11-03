@@ -73,8 +73,10 @@ def mhclo_credit(path, file):
     out = {"file": file}
     with open(path, encoding="utf-8", errors="replace") as f:
         for line in f:
-            k, _, v = line.strip().partition(" ")
-            if k in ("name", "author", "license", "licence", "homepage", "uuid") and k not in out:
+            text = line.strip().lstrip("#").strip()
+            k, _, v = text.partition(" ")
+            k = k.rstrip(":").lower()
+            if k in ("name", "author", "license", "licence", "homepage", "uuid", "copyright") and k not in out:
                 out[k] = v.strip()
             if k == "verts":
                 break

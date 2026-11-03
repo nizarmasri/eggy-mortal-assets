@@ -25,7 +25,7 @@ def _paint(A, R, m, colour, rough=None):
     return A, R
 
 
-GOLD = (0.86, 0.58, 0.1)
+GOLD = (0.8, 0.47, 0.03)
 
 
 def _stitch(v, period, width=0.12):

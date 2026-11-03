@@ -433,8 +433,8 @@ def han(cv, ctx):
     X, Y = cv["X"], cv["Y"]
     ex, ey = _eyes(ctx)
     alb, rough, metal, height = porcelain(cv, tint=(0.96, 0.95, 0.93), seed=101)
-    cy = ey + 0.03
-    R = 0.115
+    cy = ey + 0.024
+    R = 0.104
     r = np.hypot(X, Y - cy)
     circle = smoothstep(R + 0.0008, R - 0.0008, r)
     # The S: red where above the line made of two half-circles.
@@ -466,7 +466,7 @@ def gu(cv, ctx):
     r = util.rng(5)
     shade = np.array([r.uniform(0.82, 1.15) for _ in range(64)])
     hue = np.array([r.uniform(-0.04, 0.04) for _ in range(64)])
-    base = lin((0.50, 0.34, 0.24))
+    base = lin((0.44, 0.26, 0.17))
     alb = np.broadcast_to(base, X.shape + (3,)).copy()
     alb *= shade[cells][..., None]
     alb[..., 0] *= 1 + hue[cells]
@@ -474,7 +474,7 @@ def gu(cv, ctx):
     grit = util.fbm3(P * 160, 3, seed=111)
     alb *= (0.85 + 0.25 * grit)[..., None]
     soot = smoothstep(0.55, 0.85, util.fbm3(P * 9, 4, seed=112))
-    alb *= (1 - 0.45 * soot)[..., None]
+    alb *= (1 - 0.55 * soot)[..., None]
     rough = 0.82 + 0.1 * grit
     metal = np.zeros(X.shape)
     height = 0.00015 * (grit - 0.5)
@@ -486,7 +486,7 @@ def gu(cv, ctx):
     alb = alb * (1 - (cheek * worn * 0.45)[..., None]) + lin((0.55, 0.1, 0.08)) * (cheek * worn * 0.45)[..., None]
     # Glue on every wall, with drips.
     glue, eid = seams(ctx, cv, 0.0026, pick=1.0, seed=17, wobble=0.0012)
-    gcol = lin((0.45, 0.27, 0.08))
+    gcol = lin((0.66, 0.45, 0.16))
     alb = alb * (1 - glue[..., None] * 0.85) + gcol * 0.85 * glue[..., None]
     rough = rough * (1 - glue) + 0.22 * glue
     height = height + 0.00035 * glue

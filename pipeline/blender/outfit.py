@@ -41,55 +41,33 @@ def set_param(obj, fn, name="param"):
     attr.data.foreach_set("vector", out.reshape(-1))
 
 
-def level_top(obj, reach=0.12, name="param"):
-    """Bands measured down from a piece's top edge (waistbands, cuffs) should follow that edge, not a
-    horizontal plane: near the top boundary loop, the pattern height (y) is shifted so the edge reads level,
-    fading out over `reach` metres below it."""
+def level_top(obj, reach=0.12, name="param", cell=0.02):
+    """Bands measured down from a piece's top (waistbands, boot cuffs) should follow its top edge, not a
+    horizontal plane. The top edge over each spot is the highest vertex in its vertical column (within two
+    cells round it): near it, the pattern height (y) is shifted so every column's top reads as the piece's
+    highest point, fading out over `reach` metres below. Works for open and closed tops and for pieces in
+    several parts (two boots)."""
     me = obj.data
     attr = me.attributes.get(name)
-    if attr is None:
-        return
-    bm = bmesh.new()
-    bm.from_mesh(me)
-    adj = {}
-    for e in bm.edges:
-        if e.is_boundary:
-            a, b = e.verts[0].index, e.verts[1].index
-            adj.setdefault(a, []).append(b)
-            adj.setdefault(b, []).append(a)
-    bm.free()
-    if not adj:
+    if attr is None or not len(me.vertices):
         return
     P = util.positions(obj)
-    seen, loops = set(), []
-    for v0 in adj:
-        if v0 in seen:
-            continue
-        comp, stack = [], [v0]
-        seen.add(v0)
-        while stack:
-            v = stack.pop()
-            comp.append(v)
-            for w in adj[v]:
-                if w not in seen:
-                    seen.add(w)
-                    stack.append(w)
-        loops.append(np.array(comp))
-    loops = [lp for lp in loops if len(lp) >= 8]
-    if not loops:
-        return
-    top = max(loops, key=lambda lp: P[lp, 2].mean())
-    T = P[top]
-    cx, cy = T[:, 0].mean(), T[:, 1].mean()
-    at = np.arctan2(T[:, 1] - cy, T[:, 0] - cx)
-    order = np.argsort(at)
-    at, zt = at[order], T[order, 2]
-    at = np.concatenate([at - 2 * np.pi, at, at + 2 * np.pi])
-    zt = np.concatenate([zt, zt, zt])
-    av = np.arctan2(P[:, 1] - cy, P[:, 0] - cx)
-    local = np.interp(av, at, zt)
+    key = np.floor(P[:, :2] / cell).astype(np.int64)
+    top = {}
+    for (kx, ky), z in zip(map(tuple, key), P[:, 2]):
+        if z > top.get((kx, ky), -1e9):
+            top[(kx, ky)] = z
+    local = np.empty(len(P))
+    for i, (kx, ky) in enumerate(map(tuple, key)):
+        best = -1e9
+        for dx in (-2, -1, 0, 1, 2):
+            for dy in (-2, -1, 0, 1, 2):
+                z = top.get((kx + dx, ky + dy))
+                if z is not None and z > best:
+                    best = z
+        local[i] = best
     below = local - P[:, 2]
-    shift = (T[:, 2].max() - local) * np.clip(1 - below / reach, 0, 1) * (below > -0.01)
+    shift = (P[:, 2].max() - local) * np.clip(1 - below / reach, 0, 1)
     lv = np.empty(len(me.loops), dtype=np.int64)
     me.loops.foreach_get("vertex_index", lv)
     vec = np.empty(len(me.loops) * 3)
@@ -670,7 +648,6 @@ def tight(body, arm, m, spec, name):
     vm = select_region(body, m, spec)
     faces = util.faces_of_vertices(body, vm)
     obj = util.extract_faces(body, faces, name)
-    util.smooth_boundary(obj, spec.get("edge_smooth", 12))
     util.decimate_to(obj, spec.get("tris", 2400))
     off = spec.get("offset", 0.0018)
     P = util.positions(obj)
@@ -684,6 +661,9 @@ def tight(body, arm, m, spec, name):
         sm.factor = 0.5
         sm.iterations = spec["smooth"]
         util.apply_modifier(obj, sm.name)
+    # Straighten the open edges last, after everything that moves vertices (the face selection leaves a
+    # zigzag, decimation and smoothing make it wave).
+    util.smooth_boundary(obj, spec.get("edge_smooth", 24))
     sol = obj.modifiers.new("Rim", 'SOLIDIFY')
     sol.thickness_clamp = 1.0  # no spikes at sharp open corners
     sol.thickness = off
@@ -727,10 +707,14 @@ def loose_top(body, arm, m, spec, name="top"):
     """A jacket, tunic or dobok top: the torso (and sleeves to a given length) eased off the body, a V or an
     open front, a hem; weights kept from the body."""
     H = m["height"]
+    # The hem hangs over the hips down to the asked height, but never below the crotch (it would wrap each
+    # thigh like shorts): the hips and the tops of the thighs above it belong to the top.
+    hem = max(spec.get("hem", 0.5), (crotch_height(body) + 0.035) / H)
     region = {
-        "bones": ["pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "clavicle_l", "clavicle_r", "upperarm_l", "upperarm_r", "lowerarm_l", "lowerarm_r"],
-        "z": [spec.get("hem", 0.5), spec.get("neck", 0.83)],
-        "exclude": ["head", "hand_l", "hand_r", "thigh_l", "thigh_r"],
+        "bones": ["pelvis", "spine_01", "spine_02", "spine_03", "neck_01", "clavicle_l", "clavicle_r", "upperarm_l", "upperarm_r",
+                  "lowerarm_l", "lowerarm_r", "thigh_l", "thigh_r"],
+        "z": [hem, spec.get("neck", 0.83)],
+        "exclude": ["head", "hand_l", "hand_r"],
         "along": {"upperarm_l": [-1, spec.get("sleeve", 1.0)], "upperarm_r": [-1, spec.get("sleeve", 1.0)],
                   "lowerarm_l": [-1, spec.get("forearm", 0.0)], "lowerarm_r": [-1, spec.get("forearm", 0.0)]},
     }
@@ -749,16 +733,17 @@ def loose_top(body, arm, m, spec, name="top"):
         inside = (P[:, 2] > vz) & (np.abs(P[:, 0]) < (P[:, 2] - vz) * spec.get("v_width", 0.55)) & front
         vm &= ~inside
     if spec.get("open"):
-        vm &= ~((np.abs(P[:, 0]) < spec["open"]) & front & (P[:, 2] > spec.get("hem", 0.5) * H))
+        vm &= ~((np.abs(P[:, 0]) < spec["open"]) & front & (P[:, 2] > hem * H))
     faces = util.faces_of_vertices(body, vm)
     obj = util.extract_faces(body, faces, name)
-    util.smooth_boundary(obj, spec.get("edge_smooth", 16))
     util.decimate_to(obj, spec.get("tris", 2000))
     P = util.positions(obj)
     N = util.normals(obj)
     ease = spec.get("ease", 0.012)
     zf = np.clip((neck_z - P[:, 2]) / 0.25, 0, 1)
-    util.set_positions(obj, P + N * (ease * (0.35 + 0.65 * zf))[:, None])
+    # Below the trousers' waistband (about 0.58 of the height) the top flares out over them.
+    over = spec.get("over_pants", 0.02) * smoothstep(0.6 * H, 0.52 * H, P[:, 2])
+    util.set_positions(obj, P + N * (ease * (0.35 + 0.65 * zf) + over)[:, None])
     sm = obj.modifiers.new("Smooth", 'SMOOTH')
     sm.factor = 0.6
     sm.iterations = spec.get("smooth", 5)
@@ -768,6 +753,7 @@ def loose_top(body, arm, m, spec, name="top"):
     N = util.normals(obj)
     f = (util.fbm3(P * np.array([10, 10, 3.0]), 3, seed=17) - 0.5) * spec.get("folds", 0.012)
     util.set_positions(obj, P + N * f[:, None])
+    util.smooth_boundary(obj, spec.get("edge_smooth", 30))
     sol = obj.modifiers.new("Thick", 'SOLIDIFY')
     sol.thickness_clamp = 1.0  # no spikes at sharp open corners
     sol.thickness = spec.get("thickness", 0.003)
@@ -926,6 +912,8 @@ def cape(body, arm, m, spec, name="cape"):
             y = hit[0].y if hit[0] is not None else back_y + 0.12
             # Over the shoulders the collar wraps forward a little; lower down it hangs straight.
             y += 0.012 + 0.03 * t * t
+            # Soft vertical folds, deeper towards the hem.
+            y += 0.012 * t * math.sin(u * math.pi * 3.0 + 0.4)
             if prev is not None:
                 y = max(y, prev[c].y - 0.02)  # hangs, never tucks back in under the shoulder blades
             row.append(Vector((x * (0.85 + 0.15 * t), y, z)))
@@ -949,8 +937,18 @@ def cape(body, arm, m, spec, name="cape"):
     across = np.clip(P[:, 0] / w1, -1, 1)
     set_chain(obj, along, across)
     util.transfer_weights(obj, torso)
-    _reweight(obj, np.where(along > 0.12)[0], "spine_03")
     util.delete(torso)
+    # Below the collar the cape hangs from the upper back and, lower down, from the hips, so a forward lean
+    # does not swing its hem out behind like a board (the renderer's chain adds the swing).
+    low = np.where(along > 0.12)[0]
+    for g in obj.vertex_groups:
+        g.remove([int(i) for i in low])
+    ws = np.clip(1 - (along - 0.3) / 0.6, 0, 1)
+    for gname, wv in (("spine_03", ws), ("pelvis", 1 - ws)):
+        vg = obj.vertex_groups.get(gname) or obj.vertex_groups.new(name=gname)
+        for i in low:
+            if wv[i] > 1e-3:
+                vg.add([int(i)], float(wv[i]), 'REPLACE')
     set_param(obj, lambda co, vi, fi: np.stack([co[:, 0], co[:, 2], np.zeros(len(co))], axis=1))
     log(f"{name}: {util.tri_count(obj)} tris")
     return obj

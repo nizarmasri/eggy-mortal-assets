@@ -112,7 +112,7 @@
      1.2
     ]
    },
-   "offset": 0.003,
+   "offset": 0.005,
    "sole": 0.004,
    "shader": {
     "type": "leather",
@@ -121,7 +121,8 @@
      0.045,
      0.045
     ]
-   }
+   },
+   "smooth": 10
   },
   {
    "kind": "wraps",

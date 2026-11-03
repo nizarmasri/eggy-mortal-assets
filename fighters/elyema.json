@@ -21,11 +21,11 @@
   "targets": [
    {
     "target": "stomach-pregnant-incr",
-    "value": 0.3
+    "value": 0.5
    },
    {
     "target": "torso-scale-depth-incr",
-    "value": 0.45
+    "value": 0.6
    },
    {
     "target": "torso-scale-horiz-incr",
@@ -130,7 +130,8 @@
      0.03,
      0.06
     ]
-   }
+   },
+   "smooth": 10
   },
   {
    "kind": "cape",

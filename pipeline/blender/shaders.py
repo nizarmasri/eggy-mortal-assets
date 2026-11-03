@@ -228,7 +228,7 @@ def leather(name, color):
     mat = util.new_material(name)
     g = G(mat)
     co = g.coords("Object")
-    grain = g.n("ShaderNodeTexVoronoi", Scale=900.0, _feature='DISTANCE_TO_EDGE')
+    grain = g.n("ShaderNodeTexVoronoi", Scale=320.0, _feature='DISTANCE_TO_EDGE')
     g.link(co, grain.inputs["Vector"])
     wear = g.noise(co, 60.0, 3.0)
     p = g.attr("param")
@@ -239,8 +239,8 @@ def leather(name, color):
     stitch = g.math('MULTIPLY', stitch_line, stitch_dash)
     col = g.mix(g.math('MULTIPLY', wear, 0.35), color, (0.02, 0.012, 0.008, 1))
     col = g.mix(g.math('MULTIPLY', stitch, 0.8), col, (0.25, 0.2, 0.15, 1))
-    height = g.math('ADD', g.math('MULTIPLY', grain.outputs["Distance"], 3.0), g.math('MULTIPLY', stitch, 0.5))
-    g.principled(col, g.math('ADD', 0.45, g.math('MULTIPLY', wear, 0.2)), height, strength=0.4, distance=0.001)
+    height = g.math('ADD', g.math('MULTIPLY', grain.outputs["Distance"], 0.6), g.math('MULTIPLY', stitch, 0.5))
+    g.principled(col, g.math('ADD', 0.42, g.math('MULTIPLY', wear, 0.18)), height, strength=0.25, distance=0.0006)
     return mat
 
 

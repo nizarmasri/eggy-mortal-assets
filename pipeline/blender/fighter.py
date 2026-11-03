@@ -249,6 +249,10 @@ for base, slots_ in groups.items():
     mi = np.empty(len(gear.data.polygons), dtype=np.int64)
     gear.data.polygons.foreach_get("material_index", mi)
     sel = np.isin(mi, slots_)
+    # The piece's own mesh from before the join may linger with no users: free its name for the export.
+    stale = bpy.data.meshes.get(base)
+    if stale is not None and stale.users == 0:
+        bpy.data.meshes.remove(stale)
     o = util.extract_faces(gear, sel, base)
     util.delete_faces(gear, sel)
     util.add_armature(o, arm)
