@@ -107,7 +107,7 @@ Every skinned mesh uses at most 4 influences per vertex.
 | `body` | skin, ~18k tris | yes | `Armature` | `skin` | yes |
 | `eyes` | low-poly eyes | yes | `Armature` | `eyes` | yes (behind the mask's slits) |
 | `teeth` | a tiny set behind the lips | yes | `Armature` | `teeth` | yes |
-| `gear` | every garment, the hair and the mask strap in one mesh | yes | `Armature` | `gear` | yes |
+| `gear` | every garment, the hair and the mask strap (El Yema: his hood and its laces, no strap) in one mesh | yes | `Armature` | `gear` | yes |
 | `cape` | El Yema's cape | yes | `Armature` | `gear` | yes (El Yema only) |
 | `fitas` | Bia's mask ribbons | yes | `Armature` | `gear` | yes (Bia only) |
 | `gourd` | Old Gu's gourd and its cord | yes | `Armature` | `gear` | yes (Gu only) |
