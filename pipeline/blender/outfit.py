@@ -67,7 +67,10 @@ def level_top(obj, reach=0.12, name="param", cell=0.02):
                     best = z
         local[i] = best
     below = local - P[:, 2]
-    shift = (P[:, 2].max() - local) * np.clip(1 - below / reach, 0, 1)
+    gap = P[:, 2].max() - local
+    # Only columns whose top is the piece's top edge (a few centimetres of dip at most): over a boot's foot
+    # the column top is the instep, which is no edge.
+    shift = gap * np.clip(1 - below / reach, 0, 1) * (gap < 0.08)
     lv = np.empty(len(me.loops), dtype=np.int64)
     me.loops.foreach_get("vertex_index", lv)
     vec = np.empty(len(me.loops) * 3)
