@@ -740,18 +740,16 @@ def hood(body, arm, m, egg, spec, name="hood"):
                 g.weight *= (1 - fv)
         hg.add([vtx.index], old_head * (1 - fv) + fv, 'REPLACE')
     util.limit_and_normalize(obj)
-    # Pattern coordinates: x round the head from the back (metres), y height, z the distance to the nearest
-    # edge that wants a trim (behind the mask's edge, or above the collar line).
+    # Pattern coordinates: x across the back (metres), y height, z how far behind the mask's edge (the gold
+    # frame round the mask; 1 where there is no edge to follow).
     yc = float(egg.C[1])
-    d_plane = (Q - A) @ n
     # Behind the mask's edge: how far behind it (the gold frame); elsewhere no trim from the mask.
-    trim_mask = np.where(np.abs(phi) > egg.phimax, -sd, 1.0)
+    trim_mask = np.where((np.abs(phi) > egg.phimax) & (th < math.pi - 0.15), -sd, 1.0)
 
     def param(co, vi, fi):
         # Across the back, x is the plain lateral offset (the laces are placed in it); elsewhere nothing reads it.
         x = np.where(co[:, 1] > yc, co[:, 0], np.sign(co[:, 0]) * 0.5)
-        # (The collar line's band is narrower than the mask's frame: the trim reads both at 18 mm.)
-        return np.stack([x, co[:, 2], np.minimum(trim_mask[vi], d_plane[vi] * 1.8)], axis=1)
+        return np.stack([x, co[:, 2], trim_mask[vi]], axis=1)
     set_param(obj, param)
     # Laces up the back: a slit from the nape to the back of the skull, crossed in an X between eyelets.
     hood_tree = BVHTree.FromObject(obj, bpy.context.evaluated_depsgraph_get())

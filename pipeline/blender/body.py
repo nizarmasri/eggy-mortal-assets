@@ -243,7 +243,9 @@ def sculpt(body, arm, m, spec):
     P = util.positions(body)
     N = util.normals(body)
     arms = util.weights_matrix(body, [f"{n}_{s}" for s in ("l", "r") for n in (
-        "upperarm", "lowerarm", "hand")]).sum(axis=1)
+        "upperarm", "lowerarm", "hand", "thumb_01", "thumb_02", "thumb_03", "index_01", "index_02", "index_03",
+        "middle_01", "middle_02", "middle_03", "ring_01", "ring_02", "ring_03", "pinky_01", "pinky_02",
+        "pinky_03")]).sum(axis=1)  # the hands hang beside the hips at rest: never fatten the fingers
     z_lo = 0.5 * (m["thigh_l"][2] + m["thigh_r"][2])
     z_hi = float(m["spine_03"][2])
     zb = z_lo + spec.get("at", 0.4) * (z_hi - z_lo)

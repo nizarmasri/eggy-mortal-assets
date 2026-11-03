@@ -81,7 +81,7 @@ def elyema(names, slot, prm, A, R, ctx):
             A, R = _paint(A, R, on & (z < -0.5), GOLD, 0.3)
             A, R = _paint(A, R, cloth & _sun(x, y, 0.0, ymax - 0.3, 0.06, 0.13), GOLD, 0.3)
         elif n == "g_hood":
-            # Gold framing the mask's edge and round the collar line; laces up the back over a dark slit.
+            # Gold framing the mask's edge; laces up the back over a dark slit.
             A, R = _paint(A, R, on & (z < 0.018), GOLD, 0.3)
             hd = ctx.get("hood")
             if hd:
