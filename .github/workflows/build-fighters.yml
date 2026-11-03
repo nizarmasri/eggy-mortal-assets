@@ -1,0 +1,105 @@
+name: Build fighters
+
+# One job per fighter: Blender 4.5 + MPFB build the body, gear, mask and shards (pipeline/blender/fighter.py),
+# post.mjs compresses and checks the result, and the review renders go up as artifacts (collected into one
+# `previews` artifact). With publish, the pack is assembled and released (pipeline/publish.mjs).
+# Every input comes from release inputs-v1 (vendor.yml).
+on:
+  workflow_dispatch:
+    inputs:
+      fighters:
+        description: Fighter ids, comma or space separated, or "all"
+        default: reiji
+      publish:
+        description: Publish the pack release
+        type: boolean
+        default: false
+      fast:
+        description: Lighter bakes (iteration only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      list: ${{ steps.p.outputs.list }}
+    steps:
+      - id: p
+        env:
+          IN: ${{ inputs.fighters }}
+        run: |
+          if [ "$IN" = all ]; then IN="reiji mara elyema bia duke sorn han gu"; fi
+          list=$(echo "$IN" | tr ', ' '\n\n' | grep -v '^$' | jq -R . | jq -sc .)
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        fighter: ${{ fromJSON(needs.plan.outputs.list) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/cache/restore@v4
+        id: env
+        with:
+          path: |
+            ~/blender
+            ~/.config/blender
+            ~/ktx
+          key: env-v1-${{ hashFiles('pipeline/inputs.json', 'pipeline/setup.sh', 'pipeline/blender/extract_packs.py', 'pipeline/blender/mp.py') }}
+      - name: Blender, MPFB, Cell Fracture, the packs, KTX-Software
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash pipeline/setup.sh
+      - uses: actions/cache/save@v4
+        if: steps.env.outputs.cache-hit != 'true'
+        with:
+          path: |
+            ~/blender
+            ~/.config/blender
+            ~/ktx
+          key: ${{ steps.env.outputs.cache-primary-key }}
+      - name: gltf-transform
+        run: npm install --no-audit --no-fund --prefix pipeline
+      - name: Build ${{ matrix.fighter }}
+        run: ~/blender/blender -b --python-exit-code 1 -P pipeline/blender/fighter.py -- ${{ matrix.fighter }} work/${{ matrix.fighter }} ${{ inputs.fast && '--fast' || '' }}
+      - name: Compress and check
+        run: node pipeline/post.mjs work/${{ matrix.fighter }} ${{ matrix.fighter }}
+      - name: Report
+        if: always()
+        run: |
+          cp work/${{ matrix.fighter }}/*.stats.json work/${{ matrix.fighter }}/previews/ 2>/dev/null || true
+          cp work/${{ matrix.fighter }}/dist/fighters/${{ matrix.fighter }}.json work/${{ matrix.fighter }}/previews/${{ matrix.fighter }}.meta.json 2>/dev/null || true
+          ls -la work/${{ matrix.fighter }}/dist/fighters work/${{ matrix.fighter }}/tex 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: previews-${{ matrix.fighter }}
+          path: work/${{ matrix.fighter }}/previews/
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fighter-${{ matrix.fighter }}
+          path: work/${{ matrix.fighter }}/dist/
+
+  collect:
+    needs: build
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/upload-artifact/merge@v4
+        with:
+          name: previews
+          pattern: previews-*
+          delete-merged: false
