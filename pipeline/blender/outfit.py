@@ -869,7 +869,7 @@ def _convex_hull(points, name):
     for p in points:
         bm.verts.new(Vector(p))
     res = bmesh.ops.convex_hull(bm, input=list(bm.verts), use_existing_faces=False)
-    doomed = [g for g in res["geom_interior"] + res["geom_unused"] if isinstance(g, bmesh.types.BMVert)]
+    doomed = list({g for g in res["geom_interior"] + res["geom_unused"] if isinstance(g, bmesh.types.BMVert)})
     if doomed:
         bmesh.ops.delete(bm, geom=doomed, context='VERTS')
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
