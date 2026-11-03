@@ -233,7 +233,7 @@ def delete_faces(obj, face_mask):
     obj.data.update()
 
 
-def smooth_boundary(obj, iterations=12, lam=0.5, mu=-0.53):
+def smooth_boundary(obj, iterations=12, lam=0.5, mu=-0.53, max_move=0.01):
     """Straighten the open edges (a garment's neckline, sleeve ends, hems): the zigzag a face selection leaves
     is smoothed along each boundary loop with Taubin's shrink-free filter; interior vertices stay put."""
     bm = bmesh.new()
@@ -251,12 +251,60 @@ def smooth_boundary(obj, iterations=12, lam=0.5, mu=-0.53):
         return 0
     nb = np.array([nbrs[i] for i in ids], dtype=np.int64)
     P = positions(obj)
+    P0 = P[ids].copy()
+    # Only real loops: a vertex whose two boundary neighbours are far apart sits at a pinch; leave it.
+    ok = np.linalg.norm(P[nb[:, 0]] - P[nb[:, 1]], axis=1) < 0.06
     for _ in range(iterations):
         for f in (lam, mu):
             avg = 0.5 * (P[nb[:, 0]] + P[nb[:, 1]])
-            P[ids] = P[ids] + f * (avg - P[ids])
+            P[ids] = np.where(ok[:, None], P[ids] + f * (avg - P[ids]), P[ids])
+    # Straightening moves an edge a centimetre at most.
+    d = P[ids] - P0
+    n = np.linalg.norm(d, axis=1, keepdims=True)
+    P[ids] = P0 + d * np.minimum(1.0, max_move / np.maximum(n, 1e-9))
     set_positions(obj, P)
     return len(ids)
+
+
+def despike(obj, rounds=3, factor=2.0, floor=0.012):
+    """Pull back any vertex that sticks out of its neighbourhood: further from the mean of its neighbours
+    than `factor` times its mean edge length (and more than `floor` metres)."""
+    me = obj.data
+    E = np.empty(len(me.edges) * 2, dtype=np.int64)
+    me.edges.foreach_get("vertices", E)
+    E = E.reshape(-1, 2)
+    n = len(me.vertices)
+    fixed = 0
+    for _ in range(rounds):
+        P = positions(obj)
+        acc = np.zeros((n, 3))
+        cnt = np.zeros(n)
+        np.add.at(acc, E[:, 0], P[E[:, 1]])
+        np.add.at(acc, E[:, 1], P[E[:, 0]])
+        np.add.at(cnt, E[:, 0], 1)
+        np.add.at(cnt, E[:, 1], 1)
+        L = np.linalg.norm(P[E[:, 0]] - P[E[:, 1]], axis=1)
+        el = np.zeros(n)
+        np.add.at(el, E[:, 0], L)
+        np.add.at(el, E[:, 1], L)
+        has = cnt > 0
+        mean = np.where(has[:, None], acc / np.maximum(cnt, 1)[:, None], P)
+        mel = np.where(has, el / np.maximum(cnt, 1), 0)
+        d = np.linalg.norm(P - mean, axis=1)
+        # A spike's own long edges inflate its mean edge length: compare with the neighbours' median instead.
+        nb_el = np.zeros(n)
+        np.add.at(nb_el, E[:, 0], mel[E[:, 1]])
+        np.add.at(nb_el, E[:, 1], mel[E[:, 0]])
+        nb_el = np.where(has, nb_el / np.maximum(cnt, 1), 0)
+        bad = has & (d > np.maximum(factor * nb_el, floor))
+        if not bad.any():
+            break
+        P[bad] = mean[bad]
+        set_positions(obj, P)
+        fixed += int(bad.sum())
+    if fixed:
+        log(f"despiked {obj.name}: {fixed} vertices")
+    return fixed
 
 
 def decimate_to(obj, target_tris, symmetric=True):

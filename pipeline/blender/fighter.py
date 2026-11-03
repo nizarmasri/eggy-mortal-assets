@@ -218,6 +218,7 @@ for o in pieces:
     for mm in list(o.modifiers):
         o.modifiers.remove(mm)
 gear = util.join(pieces, "gear")
+util.despike(gear)
 for g in list(gear.vertex_groups):
     if g.name not in export.JOINTS:
         gear.vertex_groups.remove(g)
@@ -307,6 +308,7 @@ gore_mat = shaders.image_material("gore", gore_albedo, gore_orm)
 gore.cut(bod, arm)
 gore.seal_seams(bod)
 gore.cut(gear, arm)
+util.despike(gear)
 caps = gore.caps(full, arm, gore_mat)
 skel, bone_pieces = gore.skeleton(arm, full, egg, gore_mat)
 util.delete(full)

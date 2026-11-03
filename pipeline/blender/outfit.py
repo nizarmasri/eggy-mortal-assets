@@ -664,6 +664,7 @@ def tight(body, arm, m, spec, name):
     # Straighten the open edges last, after everything that moves vertices (the face selection leaves a
     # zigzag, decimation and smoothing make it wave).
     util.smooth_boundary(obj, spec.get("edge_smooth", 24))
+    util.despike(obj)
     sol = obj.modifiers.new("Rim", 'SOLIDIFY')
     sol.thickness_clamp = 1.0  # no spikes at sharp open corners
     sol.thickness = off
@@ -754,6 +755,7 @@ def loose_top(body, arm, m, spec, name="top"):
     f = (util.fbm3(P * np.array([10, 10, 3.0]), 3, seed=17) - 0.5) * spec.get("folds", 0.012)
     util.set_positions(obj, P + N * f[:, None])
     util.smooth_boundary(obj, spec.get("edge_smooth", 30))
+    util.despike(obj)
     sol = obj.modifiers.new("Thick", 'SOLIDIFY')
     sol.thickness_clamp = 1.0  # no spikes at sharp open corners
     sol.thickness = spec.get("thickness", 0.003)
@@ -761,6 +763,7 @@ def loose_top(body, arm, m, spec, name="top"):
     sol.use_rim_only = False
     sol.use_even_offset = True
     util.apply_modifier(obj, sol.name)
+    util.despike(obj)
     util.shade_smooth(obj)
 
     def param(co, vi, fi):
@@ -911,7 +914,7 @@ def cape(body, arm, m, spec, name="cape"):
             hit = tree.ray_cast(o, Vector((0, -1, 0)), 0.8)
             y = hit[0].y if hit[0] is not None else back_y + 0.12
             # Over the shoulders the collar wraps forward a little; lower down it hangs straight.
-            y += 0.012 + 0.03 * t * t
+            y += 0.012 + 0.012 * t * t
             # Soft vertical folds, deeper towards the hem.
             y += 0.012 * t * math.sin(u * math.pi * 3.0 + 0.4)
             if prev is not None:

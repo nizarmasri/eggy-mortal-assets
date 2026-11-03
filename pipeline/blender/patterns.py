@@ -68,12 +68,13 @@ def duke(names, slot, prm, A, R, ctx):
     for i, n in enumerate(names):
         on = slot == i
         if n == "g_trunks":
+            # A white waistband with a green line through it, white piping at the leg hems.
             top = y[on].max() if on.any() else 1.0
-            band = on & (y > top - 0.065)
-            stripe = on & (x > 0.86)
+            hem = np.percentile(y[on], 1.5) if on.any() else 0.6
+            band = on & (y > top - 0.06)
             A, R = _paint(A, R, band, (0.95, 0.94, 0.9), 0.35)
-            A, R = _paint(A, R, on & (y > top - 0.045) & (y < top - 0.03), (0.0, 0.42, 0.2), 0.35)
-            A, R = _paint(A, R, stripe & ~band, (0.95, 0.94, 0.9), 0.35)
+            A, R = _paint(A, R, on & (y > top - 0.04) & (y < top - 0.027), (0.0, 0.42, 0.2), 0.35)
+            A, R = _paint(A, R, on & (y < hem + 0.018), (0.95, 0.94, 0.9), 0.35)
         elif n == "g_boots":
             # Black boxing boots: a white cuff with a green line, a white sole.
             top = y[on].max() if on.any() else 0.5
