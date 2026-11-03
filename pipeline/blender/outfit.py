@@ -750,7 +750,8 @@ def hood(body, arm, m, egg, spec, name="hood"):
     def param(co, vi, fi):
         # Across the back, x is the plain lateral offset (the laces are placed in it); elsewhere nothing reads it.
         x = np.where(co[:, 1] > yc, co[:, 0], np.sign(co[:, 0]) * 0.5)
-        return np.stack([x, co[:, 2], np.minimum(trim_mask[vi], d_plane[vi])], axis=1)
+        # (The collar line's band is narrower than the mask's frame: the trim reads both at 18 mm.)
+        return np.stack([x, co[:, 2], np.minimum(trim_mask[vi], d_plane[vi] * 1.8)], axis=1)
     set_param(obj, param)
     # Laces up the back: a slit from the nape to the back of the skull, crossed in an X between eyelets.
     hood_tree = BVHTree.FromObject(obj, bpy.context.evaluated_depsgraph_get())
@@ -1210,7 +1211,7 @@ def cape(body, arm, m, spec, name="cape"):
     z_hem = 0.5 * (m["calf_l"][2] + m["calf_r"][2]) + spec.get("hem_above_knee", 0.03) * k
     gap = spec.get("gap", 0.01) * k
     rows, cols = spec.get("rows", 22), spec.get("cols", 30)
-    A_c, A_s, A_h = (math.radians(spec.get(key, dflt)) for key, dflt in (("collar_angle", 72), ("shoulder_angle", 56), ("hem_angle", 72)))
+    A_c, A_s, A_h = (math.radians(spec.get(key, dflt)) for key, dflt in (("collar_angle", 65), ("shoulder_angle", 45), ("hem_angle", 70)))
     hug = spec.get("hug", 0.3)  # how fast (metres in per metre down) it may come back in towards the body
     z_seat = crotch_height(body) + 0.05
     flare = spec.get("flare", 0.03) * k

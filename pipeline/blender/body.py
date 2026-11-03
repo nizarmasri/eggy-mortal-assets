@@ -193,9 +193,10 @@ def measurements(arm, body):
     return m
 
 
-def target_vertices(names):
-    """Vertex indices a set of MakeHuman targets moves, in the basemesh's own numbering (which the export
-    copy keeps: MPFB's helper geometry comes after the body's vertices)."""
+def target_vertices(names, share=0.5):
+    """Vertex indices a set of MakeHuman targets moves by at least `share` of its largest move (a target fades
+    out round what it moves), in the basemesh's own numbering (which the export copy keeps: MPFB's helper
+    geometry comes after the body's vertices)."""
     import gzip
     out = set()
     for n in names:
@@ -204,14 +205,19 @@ def target_vertices(names):
             log("target not found:", n)
             continue
         opener = gzip.open if str(path).endswith(".gz") else open
+        ids, mags = [], []
         with opener(path, "rt") as f:
             for line in f:
                 parts = line.split()
                 if len(parts) >= 4 and not line.startswith("#"):
                     try:
-                        out.add(int(parts[0]))
+                        ids.append(int(parts[0]))
+                        mags.append(math.sqrt(sum(float(x) ** 2 for x in parts[1:4])))
                     except ValueError:
                         pass
+        if ids:
+            top = max(mags)
+            out |= {i for i, mg in zip(ids, mags) if mg >= share * top}
     return out
 
 

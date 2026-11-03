@@ -65,11 +65,11 @@
    },
    {
     "target": "r-lowerarm-fat-incr",
-    "value": 0.8
+    "value": 0.6
    },
    {
     "target": "l-lowerarm-fat-incr",
-    "value": 0.8
+    "value": 0.6
    },
    {
     "target": "r-upperleg-fat-incr",
@@ -90,22 +90,6 @@
    {
     "target": "buttocks-volume-incr",
     "value": 0.7
-   },
-   {
-    "target": "measure-underbust-circ-incr",
-    "value": 1.0
-   },
-   {
-    "target": "measure-thigh-circ-incr",
-    "value": 0.6
-   },
-   {
-    "target": "measure-upperarm-circ-incr",
-    "value": 0.6
-   },
-   {
-    "target": "measure-calf-circ-incr",
-    "value": 0.4
    }
   ],
   "sculpt": {
