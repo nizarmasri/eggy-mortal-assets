@@ -134,8 +134,8 @@ def all_shots(arm, m, outdir, stance_name, fighter_id, hidden=()):
     # The mask close up, three-quarter, at head height.
     hp = pose.head(arm, "head")
     hc = hp + Vector((0, -0.02, 0.07))
-    a = math.radians(28)
-    cam = _camera("cam_mask", (hc.x + 0.95 * math.sin(a), hc.y - 0.95 * math.cos(a), hc.z + 0.05), hc, lens=85)
+    a = math.radians(30)
+    cam = _camera("cam_mask", (hc.x + 1.35 * math.sin(a), hc.y - 1.35 * math.cos(a), hc.z + 0.06), hc - Vector((0, 0, 0.02)), lens=85)
     _light("mask_key", 'AREA', (hc.x - 0.9, hc.y - 1.0, hc.z + 0.9), hc, (1.0, 0.9, 0.8), 70, 0.6)
     out["mask"] = _shot(os.path.join(outdir, f"{fighter_id}_mask.png"), cam, 768, 768, samples=96)
     bpy.data.objects.remove(bpy.data.objects["mask_key"], do_unlink=True)
@@ -183,6 +183,25 @@ def sheet(shots, path):
     g = util.resize(g, (gh, gw))
     full = np.concatenate([g, top], axis=0)  # image rows run bottom-up
     img = util.new_image("sheet", (full.shape[1], full.shape[0]))
+    util.set_image_array(img, full)
+    util.save_png(img, path)
+    bpy.data.images.remove(img)
+
+
+def texture_sheet(paths, path, tile=384):
+    """The textures side by side (debugging the bakes without downloading them)."""
+    tiles = []
+    for p in paths:
+        img = bpy.data.images.load(p, check_existing=False)
+        img.colorspace_settings.name = 'Non-Color'
+        a = util.image_array(img)[..., :3]
+        bpy.data.images.remove(img)
+        tiles.append(util.resize(a, tile))
+    while len(tiles) % 4:
+        tiles.append(np.zeros((tile, tile, 3), dtype=np.float32))
+    rows = [np.concatenate(tiles[i:i + 4], axis=1) for i in range(0, len(tiles), 4)]
+    full = np.concatenate(rows[::-1], axis=0)
+    img = util.new_image("texsheet", (full.shape[1], full.shape[0]), non_color=True)
     util.set_image_array(img, full)
     util.save_png(img, path)
     bpy.data.images.remove(img)

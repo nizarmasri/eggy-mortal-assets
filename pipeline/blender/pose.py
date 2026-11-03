@@ -90,7 +90,7 @@ def reset(arm):
 STANCES = {
     # Karate kamae: left foot forward, bladed, lead fist out at chest height, rear fist chambered at the chin.
     "karate": dict(drop=0.06, blade=-30, lean=7, counter=12, feet=((0.15, -0.27), (-0.13, 0.21)),
-                   lead=(0.03, -0.34, -0.15), rear=(-0.08, -0.19, -0.08), head_tilt=6, knee_out=0.35),
+                   lead=(0.03, -0.33, -0.2), rear=(-0.07, -0.17, -0.2), head_tilt=6, knee_out=0.35),
     # A boxer's guard: both fists high, chin down, weight forward.
     "boxing": dict(drop=0.05, blade=-22, lean=10, counter=10, feet=((0.13, -0.18), (-0.14, 0.18)),
                    lead=(0.05, -0.27, 0.02), rear=(-0.08, -0.16, 0.04), head_tilt=12, knee_out=0.3),
@@ -131,7 +131,7 @@ def stance(arm, m, name="karate"):
         pole = Vector((0.35 if side == "l" else -0.35, 0.3, -1.0))
         two_bone(arm, f"upperarm_{side}", f"lowerarm_{side}", f"hand_{side}", target, pole)
         fore = (head(arm, f"hand_{side}") - head(arm, f"lowerarm_{side}")).normalized()
-        aim(arm, f"hand_{side}", fore)
+        aim(arm, f"hand_{side}", (fore + Vector((0, -0.9, 0))).normalized())
         fist(arm, side)
     # Head level and facing the opponent, chin down a touch.
     rotate(arm, "neck_01", (0, 0, 1), -(s["blade"] + s["counter"]) * 0.6)

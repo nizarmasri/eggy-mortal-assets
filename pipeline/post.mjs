@@ -46,7 +46,7 @@ const run = (args) => execFileSync(cli, args, { stdio: 'inherit' });
 // ---- 1. Materials, attributes ----
 const doc = await io.read(path.join(work, 'raw', `${id}.glb`));
 const root = doc.getRoot();
-const ORM = { skin: 'body_orm.png', gear: 'gear_orm.png', mask: 'mask_orm.png' };
+const ORM = { skin: 'body_orm.png', gear: 'gear_orm.png', mask: 'mask_orm.png', gore: 'gore_orm.png' };
 const METAL = { mask: 1 };
 for (const mat of root.listMaterials()) {
   const name = mat.getName();

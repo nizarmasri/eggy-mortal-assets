@@ -5,6 +5,7 @@ import os
 import bpy
 import numpy as np
 
+import shaders
 import util
 from util import log
 
@@ -111,7 +112,7 @@ def rnm(base, detail, strength=1.0):
     return r * 0.5 + 0.5
 
 
-def body_maps(low, high, size, outdir, tint=(1, 1, 1), hide=(), detail=None):
+def body_maps(low, high, size, outdir, tint=(1, 1, 1), hide=(), detail=None, hair=None):
     """Albedo from MakeHuman's skin texture (same UVs), and baked normal, roughness, cavity and AO. `detail`
     names a MakeHuman skin's normal and specular maps (same UV layout) laid over the bake for anatomy and
     skin texture: {normal, spec, strength, highpass (texels, 0 = keep everything), flip_y}."""
@@ -124,7 +125,6 @@ def body_maps(low, high, size, outdir, tint=(1, 1, 1), hide=(), detail=None):
 
     # The high copy's material: the same texture, a little unevenness and pore-scale roughness.
     mat = util.new_material("skin_high")
-    import shaders
     g = shaders.G(mat)
     co = g.coords("Object")
     tex = g.n("ShaderNodeTexImage", _image=src)
@@ -154,6 +154,28 @@ def body_maps(low, high, size, outdir, tint=(1, 1, 1), hide=(), detail=None):
     high.data.materials[0] = cav_mat
     cav = util.new_image("body_cavity", size, non_color=True)
     bake(low, cav, 'EMIT', high=high)
+    # Hair painted on the scalp under the hair shell, fading out past the hairline.
+    scalp_mask = None
+    g_scalp = high.vertex_groups.get("scalp")
+    if hair and g_scalp is not None:
+        w = np.zeros(len(high.data.vertices), dtype=np.float32)
+        for v in high.data.vertices:
+            for gg in v.groups:
+                if gg.group == g_scalp.index:
+                    w[v.index] = gg.weight
+        attr = high.data.color_attributes.new("scalp_w", 'FLOAT_COLOR', 'POINT')
+        attr.data.foreach_set("color", np.repeat(w, 4))
+        sm = util.new_material("scalp_mask")
+        g = shaders.G(sm)
+        at = g.n("ShaderNodeAttribute", _attribute_name="scalp_w", _attribute_type='GEOMETRY')
+        em = g.n("ShaderNodeEmission")
+        out = g.n("ShaderNodeOutputMaterial")
+        g.link(at.outputs["Color"], em.inputs[0])
+        g.link(em.outputs[0], out.inputs[0])
+        high.data.materials[0] = sm
+        scalp_img = util.new_image("body_scalp", size, non_color=True)
+        bake(low, scalp_img, 'EMIT', high=high)
+        scalp_mask = util.image_array(scalp_img)[..., 0]
     # AO on the low mesh itself, with the high copy and anything listed out of the way.
     high.hide_render = True
     for o in hide:
@@ -191,6 +213,15 @@ def body_maps(low, high, size, outdir, tint=(1, 1, 1), hide=(), detail=None):
             S = (S - S.mean()) / max(S.std(), 1e-3)
             G = np.clip(G - 0.07 * S, 0.25, 0.8)
             log("roughness from", os.path.basename(ds))
+    if scalp_mask is not None:
+        m = np.clip(scalp_mask * 1.25, 0, 1) ** 1.5
+        yy, xx = np.mgrid[0:size, 0:size] / size
+        streak = util.fbm3(np.stack([xx * 300, yy * 40, np.zeros_like(xx)], axis=-1), 2, seed=21)
+        hc = util.srgb_to_linear(np.array(hair, dtype=np.float32)) * (0.7 + 0.6 * streak[..., None])
+        a2 = util.srgb_to_linear(util.image_array(albedo)[..., :3])
+        a2 = a2 * (1 - m[..., None]) + hc * m[..., None]
+        albedo = util.image_from_array("body_albedo", util.linear_to_srgb(a2), os.path.join(outdir, "body_albedo.png"))
+        G = G * (1 - m) + 0.6 * m
     orm = util.image_from_array("body_orm", np.stack([R, G, B], axis=-1), os.path.join(outdir, "body_orm.png"), non_color=True)
     nrm = util.image_from_array("body_normal", N, os.path.join(outdir, "body_normal.png"), non_color=True)
     return albedo, orm, nrm

@@ -348,7 +348,10 @@ def canvas(egg, size=1024):
     P = egg.world(phi, th)
     Nrm = egg.normal(phi, th)
     shape = U.shape
+    ti = np.clip(np.searchsorted(egg.th_t, th), 1, len(egg.th_t) - 1)
+    edge = (egg.S[ti, -1] - np.abs(X.ravel())).reshape(shape)
     return {
+        "edge": edge,
         "size": size, "row0": h0, "X": X, "Y": Y,
         "phi": phi.reshape(shape), "th": th.reshape(shape),
         "P": P.reshape(shape + (3,)), "N": Nrm.reshape(shape + (3,)),

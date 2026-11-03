@@ -414,14 +414,28 @@ def short_hair(body, arm, m, egg, spec, name="hair"):
     bm.to_mesh(shell.data)
     bm.free()
     shell.data.update()
+    # Thickness tapers to almost nothing at the hairline, so the shell melts into the painted fade on the
+    # scalp instead of ending in a step.
+    bm = bmesh.new()
+    bm.from_mesh(shell.data)
+    bm.verts.ensure_lookup_table()
+    ring = {v.index: 0 for v in bm.verts if v.is_boundary}
+    frontier = list(ring)
+    while frontier:
+        nxt = []
+        for i in frontier:
+            for e in bm.verts[i].link_edges:
+                j = e.other_vert(bm.verts[i]).index
+                if j not in ring:
+                    ring[j] = ring[i] + 1
+                    nxt.append(j)
+        frontier = nxt
+    bm.free()
     S = util.positions(shell)
     shell_n = util.normals(shell)
-    util.set_positions(shell, S + shell_n * spec.get("thickness", 0.0035))
-    sol = shell.modifiers.new("Rim", 'SOLIDIFY')
-    sol.thickness = spec.get("thickness", 0.0035)
-    sol.offset = -1
-    sol.use_rim_only = True
-    util.apply_modifier(shell, sol.name)
+    t = spec.get("thickness", 0.0035)
+    taper = np.array([min(1.0, (ring.get(i, 9) + 0.15) / 2.5) for i in range(len(S))])
+    util.set_positions(shell, S + shell_n * (t * taper)[:, None])
     util.shade_smooth(shell)
     util.set_single_weight(shell, "head")
     # The knot: behind the top of the mask, at the crown's back.

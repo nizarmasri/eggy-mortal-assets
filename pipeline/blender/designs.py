@@ -32,6 +32,16 @@ def porcelain(cv, tint=(0.94, 0.93, 0.90), seed=3):
     return alb, rough, metal, height
 
 
+def rim_line(cv, alb, rough, colour, inset=0.006, width=0.0018, gloss=0.12):
+    """A thin painted line following the mask's edge, a hand's width in."""
+    e = cv["edge"]
+    wob = 0.0004 * (util.fbm3(cv["P"] * 60, 2, seed=41) - 0.5)
+    a = smoothstep(width * 0.5 + 0.0003, width * 0.5 - 0.0003, np.abs(e - inset + wob)) * cv["valid"]
+    alb = alb * (1 - a[..., None]) + lin(colour) * a[..., None]
+    rough = rough * (1 - a) + gloss * a
+    return alb, rough, a
+
+
 def _bezier(p0, p1, p2, p3, n):
     t = np.linspace(0, 1, n)[:, None]
     return ((1 - t) ** 3) * p0 + 3 * ((1 - t) ** 2) * t * p1 + 3 * (1 - t) * t * t * p2 + (t ** 3) * p3
@@ -139,6 +149,7 @@ def reiji(cv, ctx):
     alb = alb * (1 - a[..., None]) + col * a[..., None]
     rough = rough * (1 - a) + 0.30 * a
     height = height + 0.00012 * a * (0.6 + 0.4 * pool)
+    alb, rough, _ = rim_line(cv, alb, rough, (0.16, 0.03, 0.03))
     # The seal: below the fighter's left eye, near the jaw.
     sl = ctx["slits"]["eye_l"]
     sa = seal(X, Y, (sl[0] + 0.012, sl[1] + 0.095), 0.016, 5)

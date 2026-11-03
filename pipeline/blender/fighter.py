@@ -28,6 +28,7 @@ import shaders  # noqa: E402
 import bake  # noqa: E402
 import render  # noqa: E402
 import export  # noqa: E402
+import gore  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(HERE))
 argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
@@ -112,6 +113,9 @@ pieces += hair_pieces + [strap]
 stage("body low")
 hi = body.high_copy(bod, levels=1 if FAST else 2)
 body.decimate(bod, preset.get("body_tris", 18000))
+# The whole decimated body, before the hidden faces go: the caps and the skeleton are measured on it.
+full = util.duplicate(bod, "body_full")
+full.hide_render = True
 # Faces the trousers hide for good (thighs and hips) go: fewer triangles, nothing to poke through.
 if info:
     P = util.positions(bod)
@@ -145,7 +149,7 @@ bpy.ops.object.mode_set(mode='OBJECT')
 
 stage("bake body")
 bake.cycles()
-body_albedo, body_orm, body_nrm = bake.body_maps(bod, hi, size_body, TEX, tint=preset["human"].get("tint", (1, 1, 1)), hide=[mask_obj, gear], detail=preset["human"].get("detail"))
+body_albedo, body_orm, body_nrm = bake.body_maps(bod, hi, size_body, TEX, tint=preset["human"].get("tint", (1, 1, 1)), hide=[mask_obj, gear], detail=preset["human"].get("detail"), hair=(preset.get("hair") or {}).get("color"))
 stage("bake gear")
 gear_albedo, gear_orm, gear_nrm = bake.gear_maps(gear, size_gear, TEX, hide=[hi])
 
@@ -176,6 +180,21 @@ for o in (gear, mask_obj):
     util.add_armature(o, arm)
 util.set_single_weight(mask_obj, "head")
 
+stage("gore")
+gore_col, gore_rough = gore.gore_texture(256)
+gore_albedo = util.image_from_array("gore_albedo", gore_col, os.path.join(TEX, "gore_albedo.png"))
+gore_orm = util.image_from_array("gore_orm", np.stack([np.ones_like(gore_rough), gore_rough, np.zeros_like(gore_rough)], axis=-1), os.path.join(TEX, "gore_orm.png"), non_color=True)
+gore_mat = shaders.image_material("gore", gore_albedo, gore_orm)
+gore.cut(bod, arm)
+gore.seal_seams(bod)
+gore.cut(gear, arm)
+caps = gore.caps(full, arm, gore_mat)
+skel, bone_pieces = gore.skeleton(arm, full, egg, gore_mat)
+util.delete(full)
+gore_objs = [*caps, skel, *bone_pieces]
+for o in gore_objs:
+    o["hidden"] = True
+
 stage("fracture")
 shards = mask.fracture(mask_obj, seed_pts, egg)
 shards = mask.finish_shards(shards, egg, arm, mask_mat)
@@ -185,12 +204,15 @@ for o in (bod, eyes, teeth, gear, mask_obj):
     export.tidy(o)
 for o in shards:
     export.tidy(o)
+for o in gore_objs:
+    export.tidy(o)
 
 stats = {
     "id": FID,
     "height_m": round(m["height"], 4),
     "triangles": {o.name: util.tri_count(o) for o in (bod, eyes, teeth, gear, mask_obj)},
     "shards": len(shards),
+    "gore_triangles": {"skeleton": util.tri_count(skel), "bone_pieces": sum(util.tri_count(o) for o in bone_pieces), "caps": sum(util.tri_count(o) for o in caps)},
     "shard_triangles": sum(util.tri_count(o) for o in shards),
     "textures": {img.name: list(img.size) for img in (body_albedo, body_orm, body_nrm, gear_albedo, gear_orm, gear_nrm, mask_albedo, mask_orm, mask_nrm, eye_img)},
     "egg": {"C": egg.C.round(4).tolist(), "a": round(egg.a, 4), "b": round(egg.b, 4), "h": round(egg.h, 4), "phimax_deg": round(math.degrees(egg.phimax), 2)},
@@ -199,13 +221,16 @@ log("stats", json.dumps(stats))
 
 if PREVIEWS:
     stage("previews")
-    render.all_shots(arm, m, os.path.join(OUT, "previews"), preset.get("stance", "karate"), FID, hidden=[hi, *shards])
+    render.all_shots(arm, m, os.path.join(OUT, "previews"), preset.get("stance", "karate"), FID, hidden=[hi, *shards, *gore_objs])
+    render.texture_sheet([os.path.join(TEX, f) for f in ("body_albedo.png", "body_normal.png", "body_orm.png", "gear_albedo.png",
+                          "gear_normal.png", "gear_orm.png", "mask_albedo.png", "mask_orm.png", "mask_normal.png", "mask_crack.png",
+                          "gore_albedo.png", "eyes_albedo.png")], os.path.join(OUT, "previews", f"{FID}_textures.png"))
 
 stage("export")
 util.delete(hi)
 raw = os.path.join(OUT, "raw", f"{FID}.glb")
 export.bones_sidecar(arm, os.path.join(OUT, f"{FID}.bones.json"))
-export.glb(arm, [bod, eyes, teeth, gear, mask_obj, *shards], raw)
+export.glb(arm, [bod, eyes, teeth, gear, mask_obj, *shards, *gore_objs], raw)
 stats["raw_bytes"] = os.path.getsize(raw)
 with open(os.path.join(OUT, f"{FID}.stats.json"), "w") as f:
     json.dump(stats, f, indent=1)
