@@ -1007,75 +1007,130 @@ def set_chain(obj, along, across, strip=None):
 
 
 def cape(body, arm, m, spec, name="cape"):
-    """A short cape hanging from the shoulders down the back: a sheet a little clear of the back, cast onto
-    the torso alone (never the arms, so it never sticks out like wings once the arms move), narrower at the
-    collar than at the hem. Weighted to spine_03 and the clavicles at the collar (from the torso), to spine_03
-    below; the renderer swings it with a spring chain (_CHAIN, _CHAINU)."""
-    # The torso alone: the body without its arms, for casting and for the collar weights.
+    """A long cape of heavy satin on a gathered collar round the base of the neck. It lies on the shoulders and
+    the upper back, then falls straight from the shoulder blades and the seat to a hem at the back of the knees,
+    in soft vertical folds that begin as small gathers at the collar; thick enough to show its edges.
+
+    Each column is cast round a vertical axis through the neck onto the torso alone (never the arms, so it
+    never sticks out like wings once the arms move) and hangs from the furthest point above it, as cloth does.
+    Weighted to spine_03 and the clavicles at the collar, to spine_03 below it and, down the seat and legs, to
+    the pelvis; the renderer swings it with a spring chain (_CHAIN 0 at the collar to 1 at the hem, _CHAINU
+    -1 to 1 across)."""
+    from mathutils.kdtree import KDTree
     armw = util.weights_matrix(body, sided(ARM_BONES[1:]) + ["head"]).sum(axis=1)
     torso = util.extract_faces(body, util.faces_of_vertices(body, armw < 0.25), name + "_torso")
     tree = bvh(torso)
-    H = m["height"]
-    top_z = m["neck_01"][2] - 0.015
-    length = spec.get("length", 0.45) * H / 1.78
-    w0 = spec.get("width", 0.2) * H / 1.78
-    w1 = spec.get("bottom_width", w0 * 1.35) * H / 1.78
-    back_y = m["spine_03"][1]
-    rows, cols = 12, 12
-    grid = []
-    prev = None
-    for r in range(rows + 1):
-        t = r / rows
-        z = top_z - length * t
-        half = w0 + (w1 - w0) * t
-        row = []
-        for c in range(cols + 1):
-            u = c / cols * 2 - 1
-            x = u * half
-            o = Vector((x * 0.85, back_y + 0.5, z))
-            hit = tree.ray_cast(o, Vector((0, -1, 0)), 0.8)
-            y = hit[0].y if hit[0] is not None else back_y + 0.12
-            # Over the shoulders the collar wraps forward a little; lower down it hangs straight.
-            y += 0.012 + 0.012 * t * t
-            # Soft vertical folds, deeper towards the hem.
-            y += 0.012 * t * math.sin(u * math.pi * 3.0 + 0.4)
-            if prev is not None:
-                y = max(y, prev[c].y - 0.02)  # hangs, never tucks back in under the shoulder blades
-            row.append(Vector((x * (0.85 + 0.15 * t), y, z)))
-        grid.append(row)
-        prev = row
+    k = m["height"] / 1.78
+    y0 = float(m["neck_01"][1])
+    z_top = float(m["neck_01"][2]) + spec.get("collar_z", 0.0) * k
+    z_hem = 0.5 * (m["calf_l"][2] + m["calf_r"][2]) + spec.get("hem_above_knee", 0.03) * k
+    gap = spec.get("gap", 0.01) * k
+    rows, cols = spec.get("rows", 22), spec.get("cols", 30)
+    A_c, A_s, A_h = (math.radians(spec.get(key, dflt)) for key, dflt in (("collar_angle", 90), ("shoulder_angle", 64), ("hem_angle", 75)))
+    flare = spec.get("flare", 0.03) * k
+    zs = np.append(np.arange(z_top, z_hem, -0.004), z_hem)
+    tz = (z_top - zs) / (z_top - z_hem)
+    span = A_c + (A_s - A_c) * smoothstep(0.0, 0.1, tz) + (A_h - A_s) * smoothstep(0.35, 1.0, tz)
+    us = np.linspace(-1, 1, cols + 1)
+    reach = 0.9
+    G = np.zeros((rows + 1, cols + 1, 3))
+    for c, u in enumerate(us):
+        dx, dy = np.sin(u * span), np.cos(u * span)
+        rho = np.zeros(len(zs))
+        for j, z in enumerate(zs):
+            hit = tree.ray_cast(Vector((dx[j] * reach, y0 + dy[j] * reach, z)), Vector((-dx[j], -dy[j], 0)), reach)
+            if hit[0] is not None:
+                rho[j] = reach - hit[3]
+        # Hang from the furthest point above (cloth never tucks back in under the shoulder blades or the seat).
+        env = np.maximum.accumulate(np.where(rho > 0, rho + gap, 0.0))
+        env = np.maximum(env, 0.06 * k) + flare * smoothstep(0.4, 1.0, tz)
+        line = np.stack([dx * env, y0 + dy * env, zs], axis=1)
+        s = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(line, axis=0), axis=1))])
+        sr = np.linspace(0, s[-1], rows + 1)
+        G[:, c] = np.stack([np.interp(sr, s, line[:, i]) for i in range(3)], axis=1)
+    # Calm the column-to-column differences and the turn over the shoulders.
+    for _ in range(3):
+        G[:, 1:-1] += 0.5 * (0.5 * (G[:, :-2] + G[:, 2:]) - G[:, 1:-1])
+        G[1:-1] += 0.3 * (0.5 * (G[:-2] + G[2:]) - G[1:-1])
+    flat = G.reshape(-1, 3)
+    flat, _ = util.push_out(flat, tree, gap * 0.6)
+    G = flat.reshape(G.shape)
+    # Folds along the surface normal: gathers at the collar fading out, broad folds deepening to the hem.
+    du = np.gradient(G, axis=1)
+    dv = np.gradient(G, axis=0)
+    Nrm = np.cross(dv, du)
+    Nrm /= np.maximum(np.linalg.norm(Nrm, axis=2, keepdims=True), 1e-9)
+    radial = G - np.array([0.0, y0, 0.0])
+    radial[..., 2] = 0
+    Nrm *= np.where((Nrm * radial).sum(axis=2, keepdims=True) < 0, -1.0, 1.0)
+    T = np.repeat(np.linspace(0, 1, rows + 1)[:, None], cols + 1, axis=1)
+    U = np.repeat(us[None, :], rows + 1, axis=0)
+    gathers = 0.007 * k * (1 - smoothstep(0.0, 0.3, T)) * np.sin(math.pi * spec.get("gathers", 9) * (U + 1))
+    phase = math.pi * spec.get("folds", 6) * (U + 1) + 0.7 * np.sin(2.3 * U + 0.5) + 1.2 * T * np.sin(1.7 * U + 2.0)
+    folds = k * (0.004 + 0.02 * smoothstep(0.12, 1.0, T)) * np.sin(phase)
+    G = G + Nrm * (gathers + folds)[..., None]
+    flat, _ = util.push_out(G.reshape(-1, 3), tree, gap * 0.5)
+    G = flat.reshape(G.shape)
     bm = bmesh.new()
-    V = [[bm.verts.new(p) for p in row] for row in grid]
+    V = [[bm.verts.new(G[r, c]) for c in range(cols + 1)] for r in range(rows + 1)]
     for r in range(rows):
         for c in range(cols):
             bm.faces.new((V[r][c], V[r + 1][c], V[r + 1][c + 1], V[r][c + 1]))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    obj = util.bmesh_object(name, bm)
-    sol = obj.modifiers.new("Thick", 'SOLIDIFY')
+    bm.normal_update()
+    bm.faces.ensure_lookup_table()
+    f0 = bm.faces[(rows // 2) * cols + cols // 2]
+    if f0.normal.dot(Vector((f0.calc_center_median().x, f0.calc_center_median().y - y0, 0))) < 0:
+        bmesh.ops.reverse_faces(bm, faces=bm.faces)
+    sheet = util.bmesh_object(name, bm)
+    sol = sheet.modifiers.new("Thick", 'SOLIDIFY')
     sol.thickness_clamp = 1.0  # no spikes at sharp open corners
-    sol.thickness = 0.004
+    sol.thickness = spec.get("thickness", 0.007)
     sol.offset = 0
-    util.apply_modifier(obj, sol.name)
+    sol.use_even_offset = True
+    util.apply_modifier(sheet, sol.name)
+    n_sheet = len(sheet.data.vertices)
+    # The gathered collar: a rolled band along the top edge.
+    band_r = spec.get("collar_r", 0.008) * k
+    collar = tube_along([Vector(G[0, c] + Nrm[0, c] * band_r * 0.6) for c in range(cols + 1)], band_r, sides=8, name=name + "_collar")
+    obj = util.join([sheet, collar], name)
+    obj.name = obj.data.name = name
     util.shade_smooth(obj)
+    # Chain and pattern values from the nearest grid point.
+    kd = KDTree((rows + 1) * (cols + 1))
+    for i, p in enumerate(G.reshape(-1, 3)):
+        kd.insert(Vector(p), i)
+    kd.balance()
     P = util.positions(obj)
-    along = np.clip((top_z - P[:, 2]) / length, 0, 1)
-    across = np.clip(P[:, 0] / w1, -1, 1)
+    near = np.array([kd.find(Vector(p))[1] for p in P])
+    rr, cc = near // (cols + 1), near % (cols + 1)
+    seg = np.linalg.norm(np.diff(G, axis=1), axis=2)
+    S = np.concatenate([np.zeros((rows + 1, 1)), np.cumsum(seg, axis=1)], axis=1)
+    S -= S[:, cols // 2][:, None]
+    half = np.minimum(-S[:, 0], S[:, -1])
+    along = rr / rows
+    across = us[cc]
+    s_arc = S[rr, cc]
+    edge = half[rr] - np.abs(s_arc)
+    edge[n_sheet:] = -1.0
     set_chain(obj, along, across)
     util.transfer_weights(obj, torso)
     util.delete(torso)
-    # Below the collar the cape hangs from the upper back and, lower down, from the hips, so a forward lean
-    # does not swing its hem out behind like a board (the renderer's chain adds the swing).
-    low = np.where(along > 0.12)[0]
-    for g in obj.vertex_groups:
-        g.remove([int(i) for i in low])
-    ws = np.clip(1 - (along - 0.3) / 0.6, 0, 1)
-    for gname, wv in (("spine_03", ws), ("pelvis", 1 - ws)):
-        vg = obj.vertex_groups.get(gname) or obj.vertex_groups.new(name=gname)
-        for i in low:
-            if wv[i] > 1e-3:
-                vg.add([int(i)], float(wv[i]), 'REPLACE')
-    set_param(obj, lambda co, vi, fi: np.stack([co[:, 0], co[:, 2], np.zeros(len(co))], axis=1))
-    log(f"{name}: {util.tri_count(obj)} tris")
+    Wc = util.weights_matrix(obj, ["spine_03", "clavicle_l", "clavicle_r"])
+    Wc[Wc.sum(axis=1) < 1e-6, 0] = 1.0
+    Wc /= Wc.sum(axis=1, keepdims=True)
+    ws = smoothstep(float(m["pelvis"][2]), float(m["spine_02"][2]), P[:, 2])
+    b = smoothstep(0.06, 0.18, along)
+    final = {"spine_03": (1 - b) * Wc[:, 0] + b * ws, "clavicle_l": (1 - b) * Wc[:, 1], "clavicle_r": (1 - b) * Wc[:, 2], "pelvis": b * (1 - ws)}
+    for g in list(obj.vertex_groups):
+        obj.vertex_groups.remove(g)
+    for gname, wv in final.items():
+        vg = obj.vertex_groups.new(name=gname)
+        for i in np.nonzero(wv > 1e-3)[0]:
+            vg.add([int(i)], float(wv[i]), 'REPLACE')
+    util.limit_and_normalize(obj)
+    set_param(obj, lambda co, vi, fi: np.stack([s_arc[vi], co[:, 2], edge[vi]], axis=1))
+    log(f"{name}: {util.tri_count(obj)} tris, collar {z_top:.3f}, hem {z_hem:.3f}")
     return obj
 
 
